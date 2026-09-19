@@ -12,3 +12,5 @@ ALLOW	exists	README.md
 ALLOW	exists	docs/constitution.md
 ALLOW	exists	docs/tech-stack.md
 ALLOW	new	docs/structure.md
+ALLOW	new	.env.example
+ALLOW	exists	.env.example

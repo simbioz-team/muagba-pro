@@ -29,7 +29,17 @@ else
   PATTERNS=(".env" ".git/" "package-lock.json" "uv.lock" "poetry.lock" "yarn.lock")
 fi
 
+# Исключения идут первыми: шаблон '.env' ловит по подстроке и '.env.example' —
+# файл-образец, который этап Э5 прямо поручает заполнить. Без отрицания
+# точечно это не разрулить, формат подстроки слишком груб.
 for p in "${PATTERNS[@]}"; do
+  case "$p" in
+    !*) if [[ "$FILE_PATH" == *"${p#!}"* ]]; then exit 0; fi ;;
+  esac
+done
+
+for p in "${PATTERNS[@]}"; do
+  case "$p" in !*) continue ;; esac
   WRITE_ONCE=0
   case "$p" in
     +*) WRITE_ONCE=1; p="${p#+}" ;;

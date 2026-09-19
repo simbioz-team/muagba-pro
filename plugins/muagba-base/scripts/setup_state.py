@@ -65,10 +65,10 @@ def skip(detail: str) -> V:
 
 class Probe:
     __slots__ = ("id", "stage", "title", "kind", "needs", "cost", "watch", "fills",
-                 "run", "applies")
+                 "run", "applies", "confirm_at")
 
     def __init__(self, id, stage, title, kind=MACHINE, needs=None, cost=CHEAP,
-                 watch=(), fills=None, run=None, applies=None):
+                 watch=(), fills=None, run=None, applies=None, confirm_at=None):
         self.id, self.stage, self.title = id, stage, title
         self.kind, self.needs, self.cost = kind, needs, cost
         self.watch, self.fills, self.run = tuple(watch), fills, run
@@ -76,6 +76,11 @@ class Probe:
         # человеческим пробам — у них нет run(), и сказать «неприменимо»
         # им было нечем.
         self.applies = applies
+        # Этап, на котором проба физически может быть подтверждена. Отличается
+        # от stage, когда обещание даётся раньше, чем появляется механика:
+        # пометка «машинно» ставится на Э3, а хук под неё пишется на Э7. Без
+        # этого поля Э3 не закрывался никогда, а конвейер велел не идти дальше.
+        self.confirm_at = confirm_at
 
 
 STAGES = [
@@ -277,8 +282,23 @@ class Ctx:
 
 
 def find_root(start: Path) -> Path | None:
+    """Корень проекта. Домашний каталог корнем не считается никогда.
+
+    `~/.claude/` — конфиг самого Claude Code, а не проект. Поиск по признаку
+    «есть .claude/» доезжал до дома и объявлял корнем его: в пустой папке без
+    git первая же команда `trait` писала в ГЛОБАЛЬНЫЙ `~/.claude/setup.json`.
+    Найдено обкаткой; самый дорогой дефект из первого круга.
+    """
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError):
+        home = None
     for d in [start, *start.parents]:
-        if (d / ".git").exists() or (d / ".claude").is_dir():
+        if (d / ".git").exists():
+            return d
+        if home is not None and d == home:
+            break
+        if (d / ".claude").is_dir():
             return d
     return None
 
@@ -528,7 +548,9 @@ def pr_const_markers(c: Ctx) -> V:
     bare = []
     for p in named_principles(c):
         head = p.splitlines()[0].strip()
-        m = re.search(r"Исполнение:\s*(.+)", p)
+        # Значение может уехать на следующую строку — редактор переносит по
+        # ширине, а проба этого не прощала и подсказки не давала.
+        m = re.search(r"Исполнение:\s*(.{0,80})", p, re.S)
         if not m or not re.search(r"машинно|только совет", m.group(1)):
             bare.append(head)
     if bare:
@@ -741,8 +763,8 @@ def pr_enforce_permissions(c: Ctx) -> V:
 
 
 def protected_patterns_of(c: Ctx) -> list[str]:
-    """Только действующие шаблоны, без учёта префикса «записывается один раз»."""
-    return [p.lstrip("+") for p in protected_patterns(c)]
+    """Действующие запреты. Исключения (`!`) сюда не попадают: это разрешение."""
+    return [p.lstrip("+") for p in protected_patterns(c) if not p.startswith("!")]
 
 
 def protected_patterns(c: Ctx) -> list[str]:
@@ -1005,7 +1027,7 @@ PROBES = [
           fills=("docs/definition-of-done.md", "пункт «проектные пункты»"), run=pr_dod_exists),
     Probe("const.enforced", "Э3", "обещания «машинно» подтверждены", kind=HUMAN,
           watch=["docs/constitution.md", ".claude/settings.json"],
-          fills=("подтверждение const.enforced", None)),
+          fills=("подтверждение const.enforced", None), confirm_at="Э7"),
     Probe("const.audit", "Э3", "принципы обоснованы, ограничения измеримы", kind=HUMAN,
           watch=["docs/constitution.md", "docs/definition-of-done.md"]),
 
@@ -1131,6 +1153,13 @@ class State:
         return cls(data.get("traits"), data.get("confirmed"))
 
     def save(self, ctx: Ctx) -> None:
+        try:
+            if ctx.root.resolve() == Path.home().resolve():
+                raise StateError(
+                    "корнем проекта определён домашний каталог — писать туда "
+                    "нельзя. Запусти из каталога проекта или заведи git.")
+        except (OSError, RuntimeError):
+            pass
         path = ctx.p(STATE_REL)
         path.parent.mkdir(parents=True, exist_ok=True)
         body = {"version": STATE_VERSION, "traits": self.traits, "confirmed": self.confirmed}
@@ -1193,7 +1222,7 @@ def evaluate(ctx: Ctx, state: State, opts: Options) -> dict:
     deferred: list[Probe] = []
 
     for probe in PROBES:
-        if opts.only_stage and probe.stage != opts.only_stage:
+        if opts.only_stage and opts.only_stage not in (probe.stage, blocking_stage(probe)):
             continue
         if probe.needs:
             declared = state.traits.get(probe.needs)
@@ -1231,8 +1260,14 @@ def evaluate(ctx: Ctx, state: State, opts: Options) -> dict:
     return verdicts
 
 
+def blocking_stage(p: Probe) -> str:
+    """Этап, который проба держит. Обычно свой; у отложенных — тот, на котором
+    её вообще можно подтвердить."""
+    return p.confirm_at or p.stage
+
+
 def stage_probes(stage: str, verdicts: dict) -> list[Probe]:
-    return [p for p in PROBES if p.stage == stage and p.id in verdicts]
+    return [p for p in PROBES if blocking_stage(p) == stage and p.id in verdicts]
 
 
 def stage_closed(stage: str, verdicts: dict, opts: Options) -> bool:
@@ -1286,7 +1321,8 @@ def render_human(ctx: Ctx, state: State, verdicts: dict, opts: Options) -> str:
             if v.verdict in (OK, SKIP):
                 continue
             sign = "⏳" if (v.verdict == FAIL and p.kind == HUMAN) else MARK[v.verdict]
-            out.append(f"      {sign} {p.id:<20} {v.detail}")
+            origin = f" (обещано на {p.stage})" if blocking_stage(p) != p.stage else ""
+            out.append(f"      {sign} {p.id:<20} {v.detail}{origin}")
             if v.fix:
                 out.append(f"          → {v.fix}")
     out.append("")
@@ -1325,7 +1361,8 @@ def render_json(ctx: Ctx, state: State, verdicts: dict, opts: Options) -> str:
             "id": stage, "title": title,
             "closed": stage_closed(stage, verdicts, opts),
             "probes": [{"id": p.id, "kind": p.kind, "verdict": verdicts[p.id].verdict,
-                        "detail": verdicts[p.id].detail, "fix": verdicts[p.id].fix}
+                        "detail": verdicts[p.id].detail, "fix": verdicts[p.id].fix,
+                        "declared_at": p.stage}
                        for p in probes],
         })
     return json.dumps({

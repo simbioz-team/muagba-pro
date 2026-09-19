@@ -41,8 +41,14 @@ if [ -n "$PATTERNS" ]; then
   while IFS= read -r target; do
     [ -n "$target" ] || continue
     case "$target" in /*) abs="$target" ;; *) abs="$WORK/$target" ;; esac
+    allowed=0
+    while IFS= read -r pat; do
+      case "$pat" in !*) [[ "$abs" == *"${pat#!}"* ]] && allowed=1 ;; esac
+    done <<< "$PATTERNS"
+    [ "$allowed" -eq 1 ] && continue
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
+      case "$pat" in !*) continue ;; esac
       once=0
       case "$pat" in +*) once=1; pat="${pat#+}" ;; esac
       case "$abs" in

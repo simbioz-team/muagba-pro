@@ -14,3 +14,4 @@ build/out.txt	python3 build.py > build/out.txt
 -	git status
 -	python3 -c "print(1)"
 -	cat docs/constitution.md
+.env.example	printf 'K=\n' > .env.example
