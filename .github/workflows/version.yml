@@ -1,0 +1,68 @@
+name: version
+
+# Единственная реальная слабость выбранной стратегии — забытый подъём версии.
+# Для плагина с GitHub строка `version` в plugin.json ПИНИТ его: пока она та же,
+# Claude Code считает плагин свежим и оставляет пользователю закэшированную
+# копию. Забыли поднять — изменения молча не доехали.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  bumped:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Версия поднята вместе с правками плагина
+        run: |
+          BASE="origin/${{ github.base_ref }}"
+          git fetch -q origin "${{ github.base_ref }}"
+
+          fail=0
+          for manifest in plugins/*/.claude-plugin/plugin.json; do
+            [ -f "$manifest" ] || continue
+            plugin_dir=$(dirname "$(dirname "$manifest")")
+            name=$(basename "$plugin_dir")
+
+            # Менялось ли что-то в плагине, кроме самого манифеста?
+            changed=$(git diff --name-only "$BASE"...HEAD -- "$plugin_dir" \
+                      | grep -v "^${manifest}$" || true)
+            [ -z "$changed" ] && { echo "· $name: правок нет"; continue; }
+
+            old=$(git show "$BASE:$manifest" 2>/dev/null \
+                  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' \
+                  2>/dev/null || echo "")
+            new=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' "$manifest")
+
+            if [ -z "$old" ]; then
+              echo "· $name: новый плагин, версия $new"
+            elif [ "$old" = "$new" ]; then
+              echo "✗ $name: файлы менялись, а version остался $new"
+              echo "    Что делать: поднять version в $manifest и дописать CHANGELOG.md."
+              echo "    Правило 0.x: ломающее — минор, остальное — патч."
+              echo "    Изменённые файлы:"
+              echo "$changed" | sed 's/^/      /'
+              fail=1
+            else
+              echo "✓ $name: $old → $new"
+            fi
+          done
+
+          # CHANGELOG обязан упоминать новую версию: плагин ломает чужую работу,
+          # и человек должен решать, обновляться ли сейчас.
+          if [ $fail -eq 0 ] && [ -f CHANGELOG.md ]; then
+            for manifest in plugins/*/.claude-plugin/plugin.json; do
+              [ -f "$manifest" ] || continue
+              v=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version",""))' "$manifest")
+              if [ -n "$v" ] && ! grep -q "\[$v\]" CHANGELOG.md; then
+                echo "✗ CHANGELOG.md не описывает версию $v"
+                fail=1
+              fi
+            done
+          fi
+
+          exit $fail
