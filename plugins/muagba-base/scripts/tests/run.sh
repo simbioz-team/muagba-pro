@@ -55,6 +55,26 @@ while IFS=$'\t' read -r verdict state rel; do
   esac
 done < "$HERE/protect_cases.tsv"
 
+# --- protect-paths: файл в соседнем проекте ---------------------------------
+# Сессия в одном каталоге, файл в другом. Раскладка не надуманная: скил
+# настройки умеет принимать путь к проекту, а оркестратор держит несколько
+# репозиториев из одной сессии. Раньше применялись правила проекта сессии.
+SESS=$(mktemp -d); TGT=$(mktemp -d)
+mkdir -p "$SESS/.claude" "$TGT/.claude" "$TGT/docs"
+cp "$SCRIPTS/../../../template/.claude/protected-paths.txt" "$TGT/.claude/" 2>/dev/null
+: > "$TGT/.env"; : > "$TGT/.env.example"; : > "$TGT/uv.lock"; : > "$TGT/docs/readme.md"
+cross() {
+  printf '{"tool_input":{"file_path":"%s"},"cwd":"%s"}' "$1" "$SESS" \
+    | CLAUDE_PROJECT_DIR="$SESS" bash "$SCRIPTS/protect-paths.sh" >/dev/null 2>&1
+  local code=$?
+  [ "$code" -eq "$2" ] || fail "protect-paths через каталоги: код $code, ждали $2" "$1"
+}
+cross "$TGT/.env"          2
+cross "$TGT/.env.example"  0
+cross "$TGT/uv.lock"       2
+cross "$TGT/docs/readme.md" 0
+rm -rf "$SESS" "$TGT"
+
 # --- setup_state: прогон по чистому каркасу ---------------------------------
 # Ловит пробу, которая падает с исключением. Для этого и нужен свежий каркас:
 # в нём почти всё красное, то есть задействованы все ветки разбора.

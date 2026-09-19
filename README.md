@@ -81,7 +81,13 @@ cp -a "$(python3 /path/to/muagba-pro/plugins/muagba-base/scripts/find_template.p
 | `PreToolUse` (Bash) | `guard-bash.sh` | Блокирует `rm -rf /`, force-push, `reset --hard`, `clean -fd`, `chmod 777` |
 | `Stop` | `gate-check.sh` | Не даёт закрыть ход, пока `.claude/check.sh` красный |
 | `SessionStart` (compact) | `reinject-invariants.sh` | Возвращает `.claude/invariants.md` в контекст после компакции |
-| `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` |
+| `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` **проекта сессии** |
+
+Защита путей определяет проект **по самому файлу**, а не по каталогу сессии:
+правила на файл накладывает тот проект, в котором он лежит. Журнал агентов —
+наоборот, по сессии: сабагент принадлежит той сессии, которая его запустила,
+даже если работает в соседнем каталоге. Знать эту разницу стоит тому, кто
+держит несколько репозиториев из одной сессии.
 
 Все хуки — no-op, если проект не завёл соответствующий файл. Базу можно ставить
 на любой проект без подготовки.

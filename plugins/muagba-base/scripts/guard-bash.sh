@@ -35,12 +35,15 @@ fi
 # Ловятся очевидные формы — перенаправление, tee, sed -i, cp/mv, dd.
 # Полного разбора оболочки здесь нет и быть не может.
 WORK=$(work_dir)
-PATTERNS=$(protected_patterns "$WORK")
-if [ -n "$PATTERNS" ]; then
-  TARGETS=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/write_targets.py" 2>/dev/null)
+TARGETS=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/write_targets.py" 2>/dev/null)
+if [ -n "$TARGETS" ]; then
   while IFS= read -r target; do
     [ -n "$target" ] || continue
     case "$target" in /*) abs="$target" ;; *) abs="$WORK/$target" ;; esac
+    # Список — у проекта, которому принадлежит цель записи, а не у сессии.
+    OWNER=$(owner_dir "$abs") || OWNER="$WORK"
+    PATTERNS=$(protected_patterns "$OWNER")
+    [ -n "$PATTERNS" ] || continue
     allowed=0
     while IFS= read -r pat; do
       case "$pat" in !*) [[ "$abs" == *"${pat#!}"* ]] && allowed=1 ;; esac

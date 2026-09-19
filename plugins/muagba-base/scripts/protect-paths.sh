@@ -9,9 +9,10 @@ FILE_PATH=$(jq_get tool_input.file_path)
 [ -z "$FILE_PATH" ] && exit 0
 FILE_PATH="${FILE_PATH//\\//}"   # нормализуем разделители Windows
 
-# Рабочая директория, а не project_dir: в worktree-сессии проверять надо
-# список того дерева, в котором агент работает.
-WORK=$(work_dir)
+# Список берём у проекта, которому принадлежит файл; если определить не
+# вышло — у рабочей директории. Порядок именно такой: правила на файл
+# накладывает его проект, а не тот, из которого запущена сессия.
+WORK=$(owner_dir "$FILE_PATH") || WORK=$(work_dir)
 LIST="$WORK/.claude/protected-paths.txt"
 
 if [ -f "$LIST" ]; then
@@ -26,7 +27,9 @@ if [ -f "$LIST" ]; then
   # он ловит и Write, и тогда положить туда что-либо вообще нельзя.
 else
   # Значения по умолчанию, если проект не завёл свой список.
-  PATTERNS=(".env" ".git/" "package-lock.json" "uv.lock" "poetry.lock" "yarn.lock")
+  # Исключение нужно и здесь: без него `.env` по подстроке накрывает
+  # `.env.example`, а взять исключение неоткуда — списка у проекта нет.
+  PATTERNS=("!.env.example" ".env" ".git/" "package-lock.json" "uv.lock" "poetry.lock" "yarn.lock")
 fi
 
 # Исключения идут первыми: шаблон '.env' ловит по подстроке и '.env.example' —

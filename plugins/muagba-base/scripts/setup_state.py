@@ -927,10 +927,17 @@ def pr_observe_log(c: Ctx) -> V:
 
 
 def pr_observe_rule(c: Ctx) -> V:
-    if len(table_rows(c.read("docs/lessons.md"))) >= 3:
-        return ok()
-    return bad("таблица «наблюдение → во что превращается» не заполнена",
-               "docs/lessons.md")
+    text = c.read("docs/lessons.md")
+    if len(table_rows(text)) < 3:
+        return bad("таблица «наблюдение → во что превращается» не заполнена",
+                   "docs/lessons.md")
+    # Таблицу триггеров приносит каркас, поэтому сама по себе она зелёная с
+    # первой минуты и ничего про проект не говорит. Проектное здесь одно:
+    # кто и когда разбирает накопленное.
+    if not meaningful(section(text or "", "Разбор")):
+        return bad("не сказано, кто и как часто разбирает накопленное",
+                   "docs/lessons.md, раздел «Разбор»")
+    return ok()
 
 
 def pr_observe_lessons(c: Ctx) -> V:
@@ -1039,7 +1046,7 @@ PROBES = [
     Probe("structure.principle", "Э4", "записан признак размещения",
           fills=("docs/structure.md", "Принцип"), run=pr_structure_principle),
     Probe("adr.first", "Э4", "формат решений заведён",
-          fills=("docs/decisions/adr-NNNN-*.md", None), run=pr_adr_first),
+          fills=("docs/decisions/adr-NNN-*.md", None), run=pr_adr_first),
 
     Probe("stack.audit", "Э4", "выбор обоснован, раскладка применима", kind=HUMAN,
           watch=["docs/tech-stack.md", "docs/structure.md"]),
@@ -1541,7 +1548,12 @@ def cmd_trait(ctx: Ctx, state: State, expr: str) -> int:
         return 2
     state.traits[name] = raw in ("true", "да", "1")
     state.save(ctx)
-    print(f"{name} = {state.traits[name]} ({TRAITS[name]})")
+    # Пояснение сформулировано утвердительно, поэтому при false его надо
+    # отрицать: «remote = False (есть удалённый репозиторий)» читается как
+    # утверждение, которому противоречит само значение.
+    verdict = "да" if state.traits[name] else "нет"
+    print(f"{name} = {verdict}: {TRAITS[name]}"
+          if state.traits[name] else f"{name} = нет: НЕ {TRAITS[name]}")
     return 0
 
 
