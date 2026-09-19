@@ -85,6 +85,15 @@ cp -a /path/to/muagba-pro/template/. .
 **Скилы:** `/muagba-base:setup-project`, `/muagba-base:new-feature`,
 `/muagba-base:write-adr`.
 
+**Состояние настройки** — `scripts/setup_state.py`. Прогоняет пробы и говорит,
+с какого этапа продолжать. Состояние не хранится, а выводится, поэтому
+настройку можно прервать в любой момент:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup_state.py"          # таблица
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup_state.py" --json   # для скила
+```
+
 **Банк вопросов** — `questions/NN-*.md`, по файлу на этап. То, что конвейер
 спрашивает у человека, записано, а не вспоминается на ходу. Вопросы Э2–Э4
 собраны из литературы, остальные выведены из задач конвейера; у каждого есть

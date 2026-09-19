@@ -45,6 +45,13 @@ jobs:
       - name: Проверки хуков
         run: bash plugins/muagba-base/scripts/tests/run.sh
 
+      # Реестр проб в коде и таблицы в docs/gates.md расходятся молча:
+      # проба исчезает, документ уверяет, что она есть.
+      - name: Пробы против спецификации
+        run: |
+          python3 plugins/muagba-base/scripts/setup_state.py --check-spec
+          python3 plugins/muagba-base/scripts/setup_state.py --check-questions
+
       - name: Валидность JSON
         run: |
           python3 - <<'PY'

@@ -41,6 +41,10 @@ python3 -c "import json,glob;[json.load(open(f)) for f in glob.glob('**/*.json',
 bash plugins/muagba-base/scripts/tests/run.sh
 ```
 
+`run.sh` включает сверку реестра проб с `docs/gates.md` и банком вопросов.
+Добавил или переименовал пробу — обнови таблицу этапа и сводку в `gates.md`,
+иначе сборка покраснеет.
+
 ## Релиз
 
 Версия плагина в `plugin.json` **пинит** его для тех, кто ставит с GitHub: пока
