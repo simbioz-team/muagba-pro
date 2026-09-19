@@ -1426,27 +1426,69 @@ def norm_target(s: str) -> str:
     return norm(s)
 
 
+def template_sections() -> list[tuple[str, str]]:
+    """Разделы заготовок каркаса: (документ, заголовок). Пусто вне репозитория базы."""
+    root = repo_root()
+    out = []
+    if root is None:
+        return out
+    for doc in sorted((root / "template" / "docs").rglob("*.md")):
+        rel = doc.relative_to(root / "template").as_posix()
+        if Path(rel).name in ("INDEX.md", "TAGS.md") or "decisions" in rel:
+            continue
+        lines = doc.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines):
+            m = re.match(r"^##\s+(.+?)\s*$", line)
+            if not m:
+                continue
+            # Раздел может честно объявить, что вопроса под него нет: он
+            # копится по ходу работы, дублирует другой документ или лежит за
+            # пределами конвейера. Причина обязательна — иначе это способ
+            # спрятать дыру.
+            if any("no-question:" in l for l in lines[i + 1:i + 4]):
+                continue
+            out.append((rel, m.group(1)))
+    return out
+
+
+def covered(target: str, targets: dict) -> bool:
+    return any(target == t or target in t or t in target for t in targets)
+
+
 def cmd_check_questions() -> int:
     qdir = HERE.parent / "questions"
     if not qdir.is_dir():
         print("нет каталога questions/ рядом со скриптом")
         return 2
     targets = question_targets()
+    probe_fills = {norm_target(f"{d} {s or ''}"): p.id
+                   for p in PROBES if p.fills for d, s in [p.fills]}
+
     holes = []
     for p in PROBES:
         if p.kind != MACHINE or not p.fills:
             continue
         doc, sec = p.fills
-        want = norm_target(f"{doc} {sec or ''}")
-        hit = any(want == t or want in t or t in want for t in targets)
-        if not hit:
+        if not covered(norm_target(f"{doc} {sec or ''}"), targets):
             holes.append((p.id, doc, sec))
     for pid, doc, sec in holes:
         print(f"проба без вопроса: {pid} → {doc}" + (f" → «{sec}»" if sec else ""))
+
+    # Третья сверка, из первой обкатки: раздел заготовки, который не закрыт
+    # ни вопросом, ни пробой. «Порядок работы» в конституции был именно таким
+    # — человек упирался в пустой раздел, и спросить про него было некому.
+    orphans = []
+    for rel, head in template_sections():
+        t = norm_target(f"{rel} {head}")
+        if not covered(t, targets) and not covered(t, probe_fills):
+            orphans.append((rel, head))
+    for rel, head in orphans:
+        print(f"раздел без вопроса и без пробы: {rel} → «{head}»")
+
     print(f"вопросов: {sum(len(v) for v in targets.values())}, "
           f"машинных проб с целью: {sum(1 for p in PROBES if p.kind == MACHINE and p.fills)}, "
-          f"без вопроса: {len(holes)}")
-    return 1 if holes else 0
+          f"проб без вопроса: {len(holes)}, разделов без спроса: {len(orphans)}")
+    return 1 if (holes or orphans) else 0
 
 
 # --------------------------------------------------------------------------
