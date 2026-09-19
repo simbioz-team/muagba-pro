@@ -1,7 +1,7 @@
 {
   "name": "muagba-base",
   "displayName": "MUAGBA Base",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Механика мультиагентной разработки: защита путей, запрет деструктивных git-команд, гейт проверки на Stop, журнал агентов, пере-инъекция инвариантов после компакции. Роли implementer/reviewer/researcher и скилы настройки проекта.",
   "author": {
     "name": "Rustam"
