@@ -29,6 +29,32 @@ if [ -n "$RM_TARGET" ]; then
         "это корень, домашний каталог или каталог первого уровня. Укажи путь внутри проекта."
 fi
 
+# Запись в защищённый путь через оболочку. Без этой проверки запрет
+# protect-paths.sh обходился одной строкой `cat > docs/constitution.md`:
+# тот хук смотрит на инструменты правки и про Bash ничего не знает.
+# Ловятся очевидные формы — перенаправление, tee, sed -i, cp/mv, dd.
+# Полного разбора оболочки здесь нет и быть не может.
+WORK=$(work_dir)
+PATTERNS=$(protected_patterns "$WORK")
+if [ -n "$PATTERNS" ]; then
+  TARGETS=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/write_targets.py" 2>/dev/null)
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    case "$target" in /*) abs="$target" ;; *) abs="$WORK/$target" ;; esac
+    while IFS= read -r pat; do
+      [ -n "$pat" ] || continue
+      once=0
+      case "$pat" in +*) once=1; pat="${pat#+}" ;; esac
+      case "$abs" in
+        *"$pat"*)
+          [ "$once" -eq 1 ] && [ ! -e "$abs" ] && continue
+          block "запись в защищённый путь '$target'" \
+                "этот файл правит человек. Шаблон '$pat' из .claude/protected-paths.txt." ;;
+      esac
+    done <<< "$PATTERNS"
+  done <<< "$TARGETS"
+fi
+
 case "$CMD" in
   # --force-with-lease проверяет, что удалённая ветка не двигалась с момента
   # последнего fetch, и чужую работу не затирает. Пропускаем его ДО общего

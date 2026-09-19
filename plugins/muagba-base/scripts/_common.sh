@@ -38,3 +38,14 @@ work_dir() {
   cwd=$(jq_get cwd)
   printf '%s' "${cwd:-$(project_dir)}"
 }
+
+# Шаблоны защищённых путей проекта, по одному на строку. Молчит, если проект
+# список не завёл: база обязана быть no-op на неподготовленном проекте.
+protected_patterns() {
+  local list="$1/.claude/protected-paths.txt"
+  [ -f "$list" ] || return 0
+  while IFS= read -r line; do
+    line="${line%%#*}"; line="${line// /}"
+    [ -n "$line" ] && printf '%s\n' "$line"
+  done < "$list"
+}

@@ -1,0 +1,16 @@
+docs/constitution.md	cat > docs/constitution.md <<EOF
+docs/tech-stack.md	echo x >> docs/tech-stack.md
+docs/structure.md	sed -i s/a/b/ docs/structure.md
+docs/structure.md	sed -i.bak s/a/b/ docs/structure.md
+.env	tee .env < /dev/null
+.env	echo SECRET=1 | tee -a .env
+uv.lock	cp /tmp/x uv.lock
+uv.lock	mv new.lock uv.lock
+docs/b.md	cat docs/a.md > docs/b.md 2>&1
+out.img	dd if=/dev/zero of=out.img
+build/out.txt	python3 build.py > build/out.txt
+-	ls -la
+-	grep -r foo docs/
+-	git status
+-	python3 -c "print(1)"
+-	cat docs/constitution.md

@@ -20,6 +20,18 @@ while IFS=$'\t' read -r verdict command; do
   esac
 done < "$HERE/rm_cases.tsv"
 
+# --- write_targets: во что пишет команда -------------------------------------
+# «-» в первой колонке значит «целей быть не должно».
+while IFS=$'\t' read -r want command; do
+  [ -z "${want:-}" ] && continue
+  got=$(printf '%s' "$command" | python3 "$SCRIPTS/write_targets.py" | tr '\n' ' ')
+  if [ "$want" = "-" ]; then
+    [ -z "${got// /}" ] || fail "write_targets: ждали пусто, получили '$got'" "$command"
+  else
+    case " $got " in *" $want "*) ;; *) fail "write_targets: нет '$want' в '$got'" "$command" ;; esac
+  fi
+done < "$HERE/write_cases.tsv"
+
 # --- protect-paths: защищённые и записываемые один раз пути ------------------
 PROJ=$(mktemp -d)
 trap 'rm -rf "$PROJ"' EXIT

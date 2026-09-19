@@ -16,9 +16,6 @@
       "Read(.env.*)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
-      "Edit(docs/constitution.md)",
-      "Edit(docs/tech-stack.md)",
-      "Edit(docs/structure.md)",
       "Bash(git push --force *)",
       "Bash(git reset --hard *)"
     ]

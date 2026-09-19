@@ -156,20 +156,42 @@ def meaningful(text: str | None) -> str:
     return "\n".join(kept).strip()
 
 
-def table_rows(text: str | None) -> list[list[str]]:
-    """Строки markdown-таблицы без шапки, разделителя и незаполненных."""
-    rows = []
+def tables(text: str | None) -> list[list[list[str]]]:
+    """Таблицы документа по отдельности, каждая — список строк ячеек.
+
+    По отдельности, а не одной кучей: у второй таблицы своя шапка, и если
+    собирать всё подряд, она поедет в данные. На этом `product.glossary`
+    зеленела на нетронутой заготовке.
+    """
+    out, cur = [], []
     for line in (text or "").splitlines():
-        line = line.strip()
-        if not line.startswith("|"):
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if not all(set(c) <= set("-: ") for c in cells):  # строка-разделитель
+                cur.append(cells)
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if all(set(c) <= set("-: ") for c in cells):
-            continue
-        if not any(meaningful(c) for c in cells):
-            continue
-        rows.append(cells)
-    return rows[1:] if rows else []
+        if cur:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+def filled_rows(table: list[list[str]]) -> list[list[str]]:
+    """Строки таблицы, где заполнено хоть что-то, кроме первой колонки.
+
+    Первая колонка в заготовках базы подписана заранее («Язык и версия»), а
+    значения — слоты. Считать такую строку заполненной значит объявить
+    незаполненный стек зафиксированным.
+    """
+    return [r for r in table[1:] if any(meaningful(c) for c in r[1:])]
+
+
+def table_rows(text: str | None) -> list[list[str]]:
+    """Заполненные строки всех таблиц документа."""
+    return [r for t in tables(text) for r in filled_rows(t)]
 
 
 # --------------------------------------------------------------------------
@@ -416,8 +438,11 @@ def pr_product_meta(c: Ctx) -> V:
     if script is None:
         return bad("не найден check_frontmatter.py из docsys",
                    "поставить docsys либо указать путь в DOCSYS_SCRIPTS")
+    # Только продуктовые документы. Без ограничения области проба требовала
+    # frontmatter у workflow.md и toolchain.md, которые заполняются на Э9-Э10:
+    # Э2 не закрывался, пока не сделана работа поздних этапов.
     try:
-        r = subprocess.run([sys.executable, str(script)], cwd=c.root,
+        r = subprocess.run([sys.executable, str(script), *PRODUCT_DOCS], cwd=c.root,
                            capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as e:
         return bad(f"check_frontmatter.py не запустился: {e}")
@@ -436,9 +461,11 @@ def pr_product_glossary(c: Ctx) -> V:
     text = c.read("docs/product/glossary.md")
     if text is None:
         return bad("нет docs/product/glossary.md", "/doc-new")
-    for row in table_rows(text):
-        if len(row) >= 2 and meaningful(row[0]) and meaningful(row[1]):
-            return ok()
+    got = tables(text)
+    if got:
+        for row in filled_rows(got[0]):  # первая таблица — термины
+            if len(row) >= 2 and meaningful(row[0]) and meaningful(row[1]):
+                return ok()
     return bad("в словаре нет ни одного термина с написанием в коде",
                "docs/product/glossary.md: вторая колонка и есть контракт для имён")
 
@@ -466,8 +493,23 @@ def pr_const_exists(c: Ctx) -> V:
     return ok()
 
 
+NUMBERING = re.compile(r"^[\s]*[IVXLCDM]+[.)]?\s*|^[\s]*\d+[.)]?\s*")
+
+
+def named_principles(c: Ctx) -> list[str]:
+    """Принципы с именем и телом. Заголовок вида «I. <Имя принципа>» после
+    снятия слота оставляет номер — раньше номера хватало, чтобы заготовка
+    засчиталась настоящим принципом."""
+    out = []
+    for p in principles(c):
+        head, _, body = p.partition("\n")
+        if meaningful(NUMBERING.sub("", head)) and meaningful(body):
+            out.append(p)
+    return out
+
+
 def pr_const_count(c: Ctx) -> V:
-    named = [p for p in principles(c) if meaningful(p.splitlines()[0])]
+    named = named_principles(c)
     n = len(named)
     if n < 5:
         return bad(f"принципов {n}, нужно 5–9", "docs/constitution.md → «Принципы»")
@@ -479,7 +521,7 @@ def pr_const_count(c: Ctx) -> V:
 
 def pr_const_markers(c: Ctx) -> V:
     bare = []
-    for p in principles(c):
+    for p in named_principles(c):
         head = p.splitlines()[0].strip()
         m = re.search(r"Исполнение:\s*(.+)", p)
         if not m or not re.search(r"машинно|только совет", m.group(1)):
@@ -687,6 +729,11 @@ def pr_enforce_permissions(c: Ctx) -> V:
     return bad("список deny пуст", ".claude/settings.json → permissions.deny")
 
 
+def protected_patterns_of(c: Ctx) -> list[str]:
+    """Только действующие шаблоны, без учёта префикса «записывается один раз»."""
+    return [p.lstrip("+") for p in protected_patterns(c)]
+
+
 def protected_patterns(c: Ctx) -> list[str]:
     out = []
     for line in (c.read(".claude/protected-paths.txt") or "").splitlines():
@@ -860,10 +907,20 @@ def pr_observe_lessons(c: Ctx) -> V:
 
 
 # Э11 -----------------------------------------------------------------------
+FRAMES_DOCS = ("docs/constitution.md", "docs/tech-stack.md", "docs/structure.md")
+
+
 def pr_dry_strict(c: Ctx) -> V:
     if "--soft" in (c.read(".claude/check.sh") or ""):
         return bad("в check.sh остался --soft",
                    "послабление на время настройки снимается, когда рамки дописаны")
+    # Защита документов рамок — такое же послабление наоборот: пока они
+    # заполняются, запрет мешает, после — обязателен.
+    guarded = set(protected_patterns_of(c))
+    missing = [d for d in FRAMES_DOCS if d not in guarded]
+    if missing:
+        return bad("документы рамок не защищены: " + ", ".join(missing),
+                   ".claude/protected-paths.txt: раскомментировать строки рамок")
     return ok()
 
 

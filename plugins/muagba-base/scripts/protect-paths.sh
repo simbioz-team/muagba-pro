@@ -9,7 +9,10 @@ FILE_PATH=$(jq_get tool_input.file_path)
 [ -z "$FILE_PATH" ] && exit 0
 FILE_PATH="${FILE_PATH//\\//}"   # нормализуем разделители Windows
 
-LIST="$(project_dir)/.claude/protected-paths.txt"
+# Рабочая директория, а не project_dir: в worktree-сессии проверять надо
+# список того дерева, в котором агент работает.
+WORK=$(work_dir)
+LIST="$WORK/.claude/protected-paths.txt"
 
 if [ -f "$LIST" ]; then
   PATTERNS=()
@@ -48,9 +51,8 @@ MSG
 
   cat >&2 <<MSG
 Запрещено: $FILE_PATH попадает под защищённый шаблон '$p'.
-Что делать: если правка действительно нужна — попроси человека внести её
-самому либо снять шаблон из .claude/protected-paths.txt. Не обходи запрет
-через Bash: он проверяется отдельно.
+Что делать: правка этого файла — работа человека. Попроси внести её самому
+либо снять шаблон из .claude/protected-paths.txt, если запрет уже не нужен.
 MSG
   exit 2
 done
