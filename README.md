@@ -34,7 +34,7 @@ git status и предзагруженные скилы.
 ### 1. Плагин
 
 ```bash
-/plugin marketplace add <owner>/muagba-pro
+/plugin marketplace add simbioz-team/muagba-pro
 /plugin install muagba-base@muagba-pro
 ```
 

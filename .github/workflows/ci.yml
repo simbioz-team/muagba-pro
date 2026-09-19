@@ -1,0 +1,58 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Установка Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Сломанный манифест иначе обнаружится только у того, кто ставит плагин.
+      - name: Манифесты плагина и маркетплейса
+        run: |
+          claude plugin validate .
+          for p in plugins/*/; do
+            if [ -f "$p/.claude-plugin/plugin.json" ]; then claude plugin validate "$p"; fi
+          done
+
+      # find, а не глоб: bash-globstar не заходит в скрытые каталоги, а главные
+      # скрипты шаблона лежат под template/.claude/ — их бы молча пропустило.
+      - name: Синтаксис bash
+        run: |
+          find . -path ./.git -prune -o -name '*.sh' -print0 \
+            | xargs -0 -r -n1 bash -n
+          echo "bash: ок"
+
+      - name: Синтаксис python
+        run: |
+          find . -path ./.git -prune -o -name '*.py' -print0 \
+            | xargs -0 -r python3 -m py_compile
+          echo "python: ок"
+
+      - name: Валидность JSON
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+          bad = []
+          for p in pathlib.Path(".").rglob("*.json"):
+              if ".git/" in str(p):
+                  continue
+              try:
+                  json.load(p.open())
+              except Exception as e:
+                  bad.append(f"{p}: {e}")
+          if bad:
+              print("\n".join(bad)); sys.exit(1)
+          print("JSON: ок")
+          PY

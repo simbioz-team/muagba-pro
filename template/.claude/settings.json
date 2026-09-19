@@ -23,6 +23,22 @@
       "Bash(git reset --hard *)"
     ]
   },
-  "extraKnownMarketplaces": {},
-  "enabledPlugins": {}
+  "extraKnownMarketplaces": {
+    "muagba-pro": {
+      "source": {
+        "source": "github",
+        "repo": "simbioz-team/muagba-pro"
+      }
+    },
+    "docsys": {
+      "source": {
+        "source": "github",
+        "repo": "simbioz-team/docsys"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "muagba-base@muagba-pro": true,
+    "docsys@docsys": true
+  }
 }
