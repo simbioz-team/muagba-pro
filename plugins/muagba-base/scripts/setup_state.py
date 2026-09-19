@@ -306,14 +306,26 @@ def find_root(start: Path) -> Path | None:
 # --------------------------------------------------------------------------
 # Синтетические вызовы хуков
 # --------------------------------------------------------------------------
-def call_hook(script: str, payload: dict, cwd: Path, timeout: int = 10) -> int:
+def call_hook(script: str, payload: dict, cwd: Path, timeout: int = 10,
+              bare: bool = False) -> int:
+    """Синтетический вызов хука.
+
+    `bare=True` — без `cwd` во входе и без `CLAUDE_PROJECT_DIR` в окружении.
+    Так самотест проверяет то, что ломалось на самом деле: хук обязан понять,
+    какому проекту принадлежит файл, по самому файлу. Подставлять правильный
+    корень и радоваться зелёному — обманывать себя, и первая обкатка это
+    показала.
+    """
     path = HERE / script
     if not path.exists():
         return -1
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    if not bare:
+        env["CLAUDE_PROJECT_DIR"] = str(cwd)
     try:
         r = subprocess.run(["bash", str(path)], input=json.dumps(payload),
                            capture_output=True, text=True, timeout=timeout,
-                           cwd=str(cwd), env={**os.environ, "CLAUDE_PROJECT_DIR": str(cwd)})
+                           cwd=str(cwd), env=env)
         return r.returncode
     except (OSError, subprocess.SubprocessError):
         return -1
@@ -633,8 +645,9 @@ def pr_env_recipe(c: Ctx) -> V:
     if run_recipes(c):
         return ok()
     return bad("рецепт запуска не записан",
-               "/run-skill-generator — он поднимет приложение с чистого окружения "
-               "и запомнит, что сработало")
+               "`.claude/skills/run-<имя>/SKILL.md`: команды установки и старта, "
+               "порт, признак готовности. Проверь их на чистом окружении, прежде "
+               "чем записывать")
 
 
 def pr_env_logs(c: Ctx) -> V:
@@ -795,12 +808,14 @@ def pr_enforce_paths_work(c: Ctx) -> V:
     if not pats:
         return bad("нечего проверять: список защищённых путей пуст")
     target = c.root / pats[0].lstrip("/")
-    code = call_hook("protect-paths.sh", {"tool_input": {"file_path": str(target)},
-                                          "cwd": str(c.root)}, c.root)
+    # Голый вызов: только абсолютный путь к файлу, без подсказок про проект.
+    code = call_hook("protect-paths.sh", {"tool_input": {"file_path": str(target)}},
+                     c.root, bare=True)
     if code == 2:
         return ok()
     return bad(f"запрет на правку не сработал (код {code}, ждали 2)",
-               "проверь, что hooks.json плагина подключён и скрипт исполняется")
+               "хук должен определять проект по самому файлу; проверь, что "
+               "hooks.json подключён и скрипт исполняется")
 
 
 def pr_enforce_bash_works(c: Ctx) -> V:
@@ -904,10 +919,24 @@ def pr_cycle_goal(c: Ctx) -> V:
 
 
 def pr_cycle_verify(c: Ctx) -> V:
+    """Подтверждение на живом приложении.
+
+    Раньше проба искала `.claude/skills/verify/SKILL.md` — артефакт команды
+    `/verify`, которой в Claude Code может не быть вовсе. Строить гейт вокруг
+    команды, существование которой не проверено, — то же самое, что строить
+    его вокруг обещания. Проверяется то, что делает проект: записанный рецепт
+    запуска и сказанное вслух, чем подтверждается работа на живом приложении.
+    """
     if c.exists(".claude/skills/verify/SKILL.md"):
         return ok()
-    return bad("рецепт /verify не записан",
-               "/verify — подтверждение на живом приложении, не на тестах")
+    if not run_recipes(c):
+        return bad("нечем поднять приложение для проверки вживую",
+                   "рецепт `.claude/skills/run-<имя>/SKILL.md`")
+    body = meaningful(section(c.read("docs/workflow.md") or "", "Кто проверяет"))
+    if not re.search(r"жив|вручную|браузер|прогон приложени", body, re.I):
+        return bad("не сказано, чем подтверждается работа на живом приложении",
+                   "docs/workflow.md → «Кто проверяет»: тесты зелёные ≠ фича работает")
+    return ok()
 
 
 def pr_cycle_review(c: Ctx) -> V:
