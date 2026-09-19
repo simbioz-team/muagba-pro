@@ -3,7 +3,7 @@
 > Нужен, чтобы искать документы, не читая их: агент отбирает строки по тегам,
 > заголовку и summary, и открывает только отобранное.
 >
-> Собирается скриптом `rebuild_registries.py` из плагина `muagba-docs`.
+> Собирается скриптом `rebuild_registries.py` из плагина `docsys`.
 > Руками не править. Пустое поле — прочерк, а не догадка.
 
 | path | scope | type | tier | status | updated | tags | title | summary |
