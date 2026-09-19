@@ -64,13 +64,18 @@ def skip(detail: str) -> V:
 
 
 class Probe:
-    __slots__ = ("id", "stage", "title", "kind", "needs", "cost", "watch", "fills", "run")
+    __slots__ = ("id", "stage", "title", "kind", "needs", "cost", "watch", "fills",
+                 "run", "applies")
 
     def __init__(self, id, stage, title, kind=MACHINE, needs=None, cost=CHEAP,
-                 watch=(), fills=None, run=None):
+                 watch=(), fills=None, run=None, applies=None):
         self.id, self.stage, self.title = id, stage, title
         self.kind, self.needs, self.cost = kind, needs, cost
         self.watch, self.fills, self.run = tuple(watch), fills, run
+        # Условие, которое не выражается признаком: (ctx) -> bool. Нужно
+        # человеческим пробам — у них нет run(), и сказать «неприменимо»
+        # им было нечем.
+        self.applies = applies
 
 
 STAGES = [
@@ -614,9 +619,15 @@ def pr_env_logs(c: Ctx) -> V:
     haystack = c.rules_text() + "\n".join(
         p.read_text(encoding="utf-8", errors="replace") for p in run_recipes(c))
     haystack += c.read("docs/workflow.md") or ""
-    for line in haystack.splitlines():
-        if re.search(r"\bлог", line, re.I) and meaningful(line):
+    # Раздел «## Логи» — самая частая форма ответа, а заголовки meaningful()
+    # отбрасывает. И слово бывает латиницей: путь вида app.log.
+    for i, line in enumerate(lines := haystack.splitlines()):
+        if not re.search(r"\b(лог|log)", line, re.I):
+            continue
+        if meaningful(line):
             return ok()
+        if HEADING.match(line) and meaningful("\n".join(lines[i + 1:i + 6])):
+            return ok()  # заголовок про логи, под ним что-то есть
     return bad("нигде не записано, где логи приложения",
                "в рецепте запуска или своде правил: куда пишутся и как прочитать")
 
@@ -979,7 +990,8 @@ PROBES = [
     Probe("product.audit", "Э2", "заполнено осмысленно", kind=HUMAN,
           watch=PRODUCT_DOCS),
     Probe("product.owned", "Э2", "документ свой, а не конспект чужого", kind=HUMAN,
-          watch=PRODUCT_DOCS),
+          watch=PRODUCT_DOCS, applies=lambda c: any(
+              re.search(r"^sources:\s*\S", c.read(d) or "", re.M) for d in PRODUCT_DOCS)),
 
     Probe("const.exists", "Э3", "конституция заведена", run=pr_const_exists),
     Probe("const.count", "Э3", "принципов 5–9",
@@ -1192,6 +1204,9 @@ def evaluate(ctx: Ctx, state: State, opts: Options) -> dict:
             if not declared:
                 verdicts[probe.id] = V(SKIP, f"признак «{probe.needs}» выключен")
                 continue
+        if probe.applies is not None and not probe.applies(ctx):
+            verdicts[probe.id] = V(SKIP, "предмета проверки нет")
+            continue
         if probe.kind == HUMAN:
             verdicts[probe.id] = check_confirmation(probe, ctx, state)
             continue
