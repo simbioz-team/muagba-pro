@@ -1,0 +1,21 @@
+BLOCK	rm -rf /
+BLOCK	rm -rf /*
+BLOCK	rm -fr /
+BLOCK	rm -rf "/"
+BLOCK	rm -rf /usr
+BLOCK	rm -rf /etc/
+BLOCK	rm -rf ~
+BLOCK	rm -rf $HOME
+BLOCK	rm --recursive --force /
+BLOCK	echo hi && rm -rf /
+BLOCK	rm -rf -- /
+OK	rm -rf /tmp/muagba-test
+OK	rm -rf /home/rustam/develop/project/build
+OK	rm -rf node_modules
+OK	rm -rf ./dist
+OK	rm -rf ~/.cache/myapp
+OK	rm -f /etc/foo.conf
+OK	rm /tmp/file.txt
+OK	git rm -r somedir
+OK	rm -rf "$PROJECT/build"
+OK	rmdir /tmp/x
