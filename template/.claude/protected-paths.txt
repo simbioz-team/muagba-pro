@@ -1,0 +1,17 @@
+# Пути, которые агент не может править. По подстроке, одна на строку.
+# Читается хуком PreToolUse плагина muagba-base.
+# Дублирует часть deny-правил из settings.json намеренно: правило работает
+# на файловых инструментах, хук — ещё и когда путь приходит иначе.
+
+.env
+.git/
+# lock-файлы: их меняет менеджер зависимостей, не агент
+package-lock.json
+uv.lock
+poetry.lock
+yarn.lock
+pnpm-lock.yaml
+# документы рамок правит человек
+docs/constitution.md
+docs/tech-stack.md
+docs/structure.md

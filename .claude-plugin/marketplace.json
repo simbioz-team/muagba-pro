@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "muagba-pro",
+  "description": "База окружения для мультиагентной разработки: рамки, права, хуки, роли агентов",
+  "owner": {
+    "name": "Rustam"
+  },
+  "plugins": [
+    {
+      "name": "muagba-base",
+      "description": "Механика мультиагентной разработки: защита путей, гейт проверки на Stop, журнал агентов, пере-инъекция инвариантов после компакции, роли implementer/reviewer/researcher и скилы настройки проекта.",
+      "source": "./plugins/muagba-base",
+      "category": "productivity"
+    }
+  ]
+}

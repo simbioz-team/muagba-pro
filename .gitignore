@@ -1,0 +1,11 @@
+# Рабочие деревья параллельных агентов
+.claude/worktrees/
+# Личные настройки и инструкции — не команда
+.claude/settings.local.json
+CLAUDE.local.md
+# Логи агентов
+.claude/logs/
+# Секреты
+.env
+.env.*
+!.env.example

@@ -1,0 +1,7 @@
+{
+  "claudeMdExcludes": [
+    "**/template/CLAUDE.md",
+    "**/template/AGENTS.md",
+    "**/template/.claude/rules/**"
+  ]
+}

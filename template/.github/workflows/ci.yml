@@ -1,0 +1,19 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # <Добавь сюда установку тулчейна проекта: setup-python / setup-node / ...>
+
+      # Тот же арбитр, что и локально: check.sh вызывается и хуком Stop,
+      # и здесь. Один источник истины про «зелёное».
+      - name: Проверка проекта
+        run: ./.claude/check.sh
