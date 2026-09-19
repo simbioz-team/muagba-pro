@@ -937,6 +937,8 @@ PROBES = [
     Probe("const.enforced", "Э3", "обещания «машинно» подтверждены", kind=HUMAN,
           watch=["docs/constitution.md", ".claude/settings.json"],
           fills=("подтверждение const.enforced", None)),
+    Probe("const.audit", "Э3", "принципы обоснованы, ограничения измеримы", kind=HUMAN,
+          watch=["docs/constitution.md", "docs/definition-of-done.md"]),
 
     Probe("stack.exists", "Э4", "стек зафиксирован",
           fills=("docs/tech-stack.md", "таблица стека"), run=pr_stack_exists),
@@ -947,6 +949,9 @@ PROBES = [
           fills=("docs/structure.md", "Принцип"), run=pr_structure_principle),
     Probe("adr.first", "Э4", "формат решений заведён",
           fills=("docs/decisions/adr-NNNN-*.md", None), run=pr_adr_first),
+
+    Probe("stack.audit", "Э4", "выбор обоснован, раскладка применима", kind=HUMAN,
+          watch=["docs/tech-stack.md", "docs/structure.md"]),
 
     Probe("env.lock", "Э5", "зависимости воспроизводимы", run=pr_env_lock),
     Probe("env.recipe", "Э5", "запуск записан, а не угадывается",
