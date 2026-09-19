@@ -9,4 +9,8 @@ CLAUDE.local.md             # личные инструкции
 .env.*
 !.env.example
 
+# --- Проверки базы ---
+__pycache__/                # .claude/check-frames.py оставляет его в любом проекте
+*.pyc
+
 # --- Дополни под стек проекта ---

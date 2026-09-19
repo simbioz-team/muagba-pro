@@ -40,6 +40,11 @@ jobs:
             | xargs -0 -r python3 -m py_compile
           echo "python: ок"
 
+      # Файлы случаев лежали в репозитории, но их никто не запускал — то есть
+      # регрессию в хуке ловить было нечем.
+      - name: Проверки хуков
+        run: bash plugins/muagba-base/scripts/tests/run.sh
+
       - name: Валидность JSON
         run: |
           python3 - <<'PY'

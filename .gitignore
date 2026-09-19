@@ -9,3 +9,6 @@ CLAUDE.local.md
 .env
 .env.*
 !.env.example
+# Побочный продукт проверок из CLAUDE.md: python3 -m py_compile
+__pycache__/
+*.pyc

@@ -21,5 +21,5 @@ elif [ -f justfile ] && grep -qE '^check:' justfile; then
 elif [ -f package.json ] && grep -q '"check"' package.json; then
   run npm run check
 else
-  echo "check.sh: проверка кода ещё не настроена (этап Э5) — гейта нет."
+  echo "check.sh: проверка кода ещё не настроена (этап Э6) — гейта нет."
 fi

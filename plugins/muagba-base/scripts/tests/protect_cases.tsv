@@ -1,0 +1,14 @@
+ALLOW	new	docs/sources/new-brief.md
+BLOCK	exists	docs/sources/old-brief.md
+BLOCK	exists	docs/sources/nested/deep.md
+ALLOW	new	docs/sources/nested/fresh.md
+BLOCK	exists	docs/constitution.md
+BLOCK	new	docs/tech-stack.md
+BLOCK	new	docs/structure.md
+ALLOW	exists	docs/lessons.md
+ALLOW	new	docs/decisions/adr-0001-x.md
+BLOCK	new	.env
+BLOCK	exists	uv.lock
+BLOCK	new	package-lock.json
+ALLOW	new	src/main.py
+ALLOW	exists	README.md
