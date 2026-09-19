@@ -19,3 +19,4 @@ OK	rm /tmp/file.txt
 OK	git rm -r somedir
 OK	rm -rf "$PROJECT/build"
 OK	rmdir /tmp/x
+OK	echo "никогда не пиши rm -rf в скриптах"

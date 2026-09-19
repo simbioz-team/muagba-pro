@@ -797,10 +797,18 @@ def pr_enforce_protected(c: Ctx) -> V:
 
 
 def pr_enforce_invariants(c: Ctx) -> V:
-    if meaningful(c.read(".claude/invariants.md")):
-        return ok()
-    return bad(".claude/invariants.md пуст",
-               "то, потеря чего ломает работу после сжатия контекста")
+    text = c.read(".claude/invariants.md")
+    if not meaningful(text):
+        return bad(".claude/invariants.md пуст",
+                   "то, потеря чего ломает работу после сжатия контекста")
+    # Три строки приносит каркас, и они верны для любого проекта. Проба,
+    # довольная ими, не говорит о проекте ничего — а слот в конце заготовки
+    # прямо просит дописать своё.
+    if SLOT.search(FENCE.sub("", COMMENT.sub("", text))):
+        return bad("в инвариантах остался слот — проектного ничего не дописано",
+                   ".claude/invariants.md: 3–7 строк, без которых агент "
+                   "начнёт делать неправильно немедленно")
+    return ok()
 
 
 def pr_enforce_paths_work(c: Ctx) -> V:
@@ -984,8 +992,15 @@ def pr_observe_lessons(c: Ctx) -> V:
 FRAMES_DOCS = ("docs/constitution.md", "docs/tech-stack.md", "docs/structure.md")
 
 
+def strip_sh_comments(text: str | None) -> str:
+    """Скрипт без строк-комментариев. Проба, ищущая флаг подстрокой, иначе
+    находит его в объяснении, почему флаг снят."""
+    return "\n".join(l for l in (text or "").splitlines()
+                     if not l.lstrip().startswith("#"))
+
+
 def pr_dry_strict(c: Ctx) -> V:
-    if "--soft" in (c.read(".claude/check.sh") or ""):
+    if "--soft" in strip_sh_comments(c.read(".claude/check.sh")):
         return bad("в check.sh остался --soft",
                    "послабление на время настройки снимается, когда рамки дописаны")
     # Защита документов рамок — такое же послабление наоборот: пока они
@@ -1367,6 +1382,12 @@ def render_human(ctx: Ctx, state: State, verdicts: dict, opts: Options) -> str:
             if v.fix:
                 out.append(f"          → {v.fix}")
     out.append("")
+    if opts.only_stage:
+        closed = stage_closed(opts.only_stage, verdicts, opts)
+        out.append(f"Этап {opts.only_stage} "
+                   + ("закрыт." if closed else "не закрыт.")
+                   + " Проверялся только он — про остальные этот прогон не говорит.")
+        return "\n".join(out)
     if nxt is None:
         out.append("Все этапы закрыты. Настройка закончена.")
     else:

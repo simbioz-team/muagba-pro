@@ -1,0 +1,14 @@
+BLOCK	git push --force
+BLOCK	git push origin main --force
+BLOCK	git push -f origin main
+BLOCK	git reset --hard HEAD~1
+BLOCK	git clean -fd
+BLOCK	chmod -R 777 /srv
+OK	git push --force-with-lease origin main
+OK	git push origin main
+OK	git reset HEAD~1
+OK	git clean -n
+OK	chmod 644 file.txt
+OK	echo "не делай git reset --hard, это опасно"
+OK	grep -r "git push --force" docs/
+OK	cat docs/workflow.md

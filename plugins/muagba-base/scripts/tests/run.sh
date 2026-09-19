@@ -32,6 +32,17 @@ while IFS=$'\t' read -r want command; do
   fi
 done < "$HERE/write_cases.tsv"
 
+# --- cmd_danger: разрушительные команды по argv, а не по упоминанию ---------
+while IFS=$'\t' read -r want command; do
+  [ -z "${want:-}" ] && continue
+  printf '{"tool_input":{"command":%s},"cwd":"."}' \
+    "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$command")" \
+    | bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1
+  code=$?
+  got=OK; [ "$code" -eq 2 ] && got=BLOCK
+  [ "$got" = "$want" ] || fail "cmd_danger: ждали $want, вышло $got" "$command"
+done < "$HERE/cmd_cases.tsv"
+
 # --- protect-paths: защищённые и записываемые один раз пути ------------------
 PROJ=$(mktemp -d)
 trap 'rm -rf "$PROJ"' EXIT
