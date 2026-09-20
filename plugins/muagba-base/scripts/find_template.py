@@ -42,6 +42,20 @@ def candidates() -> list[Path]:
     return out
 
 
+def locate() -> Path | None:
+    """Каркас или None. Вынесено из main(), чтобы copy_template.py не
+    разбирал чужой stdout ради пути."""
+    seen = set()
+    for c in candidates():
+        c = c.expanduser()
+        if c in seen:
+            continue
+        seen.add(c)
+        if looks_like_template(c):
+            return c
+    return None
+
+
 def main() -> int:
     seen = set()
     for c in candidates():

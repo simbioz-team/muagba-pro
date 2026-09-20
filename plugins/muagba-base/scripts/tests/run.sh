@@ -104,6 +104,43 @@ if [ -d "$TEMPLATE" ]; then
     || fail "setup_state: чистый каркас должен начинаться с Э0" "$(printf '%s' "$OUT" | tail -3)"
 fi
 
+# --- copy_template: каркас в непустой проект не затирает ---------------------
+# Э0 когда-то копировал обычным cp -a, поверх, и стирал написанный человеком
+# CLAUDE.md молча, без вопроса и без копии — в свежем git init восстановить
+# его было неоткуда.
+if [ -d "$TEMPLATE" ]; then
+  DEST=$(mktemp -d)
+  mkdir -p "$DEST/.claude/logs"
+  printf '# Мой свод правил\n' > "$DEST/CLAUDE.md"
+  printf 'node_modules/\n' > "$DEST/.gitignore"
+  printf '{}\n' > "$DEST/.claude/logs/agents.jsonl"
+
+  OUT=$(cd "$DEST" && python3 "$SCRIPTS/copy_template.py" --dry-run 2>&1); CODE=$?
+  [ "$CODE" -eq 0 ] || fail "copy_template --dry-run: код $CODE" "$OUT"
+  [ "$(find "$DEST" -type f | wc -l)" -eq 3 ] \
+    || fail "copy_template --dry-run скопировал файлы" "$OUT"
+  printf '%s' "$OUT" | grep -q '^  CLAUDE.md$' \
+    || fail "copy_template: совпадение по CLAUDE.md не названо" "$OUT"
+
+  OUT=$(cd "$DEST" && python3 "$SCRIPTS/copy_template.py" 2>&1)
+  grep -q 'Мой свод правил' "$DEST/CLAUDE.md" \
+    || fail "copy_template затёр CLAUDE.md проекта" "$OUT"
+  grep -q 'node_modules' "$DEST/.gitignore" \
+    || fail "copy_template затёр .gitignore проекта" "$OUT"
+  [ -s "$DEST/.claude/logs/agents.jsonl" ] \
+    || fail "copy_template затёр журнал агентов" "$OUT"
+  [ -f "$DEST/.claude/settings.json" ] \
+    || fail "copy_template не слил каталог .claude/" "$OUT"
+
+  # Разбор совпадения освобождает имя: каркасный файл обязан встать вторым
+  # проходом, сам он туда не попадёт.
+  mv "$DEST/CLAUDE.md" "$DEST/AGENTS.md"
+  OUT=$(cd "$DEST" && python3 "$SCRIPTS/copy_template.py" 2>&1)
+  grep -q '@AGENTS.md' "$DEST/CLAUDE.md" 2>/dev/null \
+    || fail "copy_template: второй проход не занял освободившееся имя" "$OUT"
+  rm -rf "$DEST"
+fi
+
 # --- setup_state: честно пустая папка ---------------------------------------
 # Состояние «до Э0»: ни .git, ни .claude/. Это первая команда конвейера на
 # самом обычном новом проекте, и она обязана отвечать JSON'ом, а не падать.
