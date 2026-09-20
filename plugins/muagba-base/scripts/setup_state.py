@@ -1086,6 +1086,27 @@ def pr_cycle_intake(c: Ctx) -> V:
     return c.frames("docs/workflow.md", "Откуда берётся задача")
 
 
+def pr_cycle_specs(c: Ctx) -> V:
+    """Форма артефактов фичи держится проверкой, а не примером в шаблоне.
+
+    Проект, заведший такую проверку у себя, нашёл ею 23 расхождения в
+    собственных спеках, написанных часом раньше."""
+    if not meaningful(c.read("specs/README.md")):
+        return bad("форма артефактов фичи не объявлена",
+                   "specs/README.md: что за файлы, какая у них форма")
+    script = HERE / "check_specs.py"
+    if not script.exists():
+        return bad("не найден check_specs.py базы", "переустановить плагин")
+    try:
+        r = subprocess.run([sys.executable, str(script), str(c.root)],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return bad(f"check_specs.py не запустился: {e}", "проверить python3")
+    if r.returncode == 0:
+        return ok(short(r.stdout))
+    return bad(short(r.stdout or r.stderr), "исправить артефакты фич в specs/")
+
+
 def pr_cycle_goal(c: Ctx) -> V:
     v = c.frames("docs/workflow.md", "Условие завершения")
     if v.verdict != OK:
@@ -1344,6 +1365,8 @@ PROBES = [
           fills=("docs/workflow.md", "Кто проверяет"), run=pr_cycle_review),
     Probe("cycle.branching", "Э9", "путь до основной ветки",
           fills=("docs/workflow.md", "Ветки и мерж"), run=pr_cycle_branching),
+    Probe("cycle.specs", "Э9", "форма артефактов фичи держится проверкой",
+          fills=("форма артефактов фичи: specs/README.md", None), run=pr_cycle_specs),
     Probe("cycle.rollback", "Э9", "порядок отката записан",
           fills=("docs/workflow.md", "Откат"), run=pr_cycle_rollback),
 

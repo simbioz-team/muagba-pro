@@ -141,6 +141,37 @@ if [ -d "$TEMPLATE" ]; then
   rm -rf "$DEST"
 fi
 
+# --- check_specs: форма артефактов фичи --------------------------------------
+# Форму, которую ничего не проверяет, не держит даже её автор: проект, заведший
+# такую проверку, нашёл ею 23 расхождения в собственных спеках.
+SP=$(mktemp -d)
+mkdir -p "$SP/docs"
+printf '### I. Раз\nт\n### II. Два\nт\n' > "$SP/docs/constitution.md"
+OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1); CODE=$?
+[ "$CODE" -eq 0 ] || fail "check_specs: проект без specs/ не находка, код $CODE" "$OUT"
+
+mkdir -p "$SP/specs/001-x"
+printf -- '- **status:** active\n\n- R1. КОГДА а СИСТЕМА ДОЛЖНА б\n  Проверка: тест\n' > "$SP/specs/001-x/spec.md"
+printf -- '## Сверка с конституцией\n\n| Принцип | Как |\n|---|---|\n| I | ок |\n' > "$SP/specs/001-x/plan.md"
+printf -- '- [ ] T001 сделать → результат\n' > "$SP/specs/001-x/tasks.md"
+OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1); CODE=$?
+[ "$CODE" -eq 1 ] || fail "check_specs: сломанная спека должна давать код 1, дала $CODE" "$OUT"
+for want in 'нет принципа II' 'не ссылается на требование' 'нет строки «Файлы:»' 'требования без задачи'; do
+  printf '%s' "$OUT" | grep -q "$want" || fail "check_specs: не поймано «$want»" "$OUT"
+done
+
+# Принципы читаются из конституции проекта, а не из константы: убрали принцип —
+# сверять по нему перестали.
+printf '### I. Раз\nт\n' > "$SP/docs/constitution.md"
+OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1)
+printf '%s' "$OUT" | grep -q 'нет принципа II' \
+  && fail "check_specs: список принципов зашит, а не читается из конституции" "$OUT"
+
+printf -- '- [ ] T001 сделать → результат [R1]\n  Файлы: a.py\n' > "$SP/specs/001-x/tasks.md"
+OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1); CODE=$?
+[ "$CODE" -eq 0 ] || fail "check_specs: правильная спека должна проходить" "$OUT"
+rm -rf "$SP"
+
 # --- setup_state: честно пустая папка ---------------------------------------
 # Состояние «до Э0»: ни .git, ни .claude/. Это первая команда конвейера на
 # самом обычном новом проекте, и она обязана отвечать JSON'ом, а не падать.
