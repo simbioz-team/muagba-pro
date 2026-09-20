@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -104,6 +105,7 @@ TRAITS = {
     "ui": "есть интерфейс, который человек открывает в браузере",
     "storage": "есть постоянное хранилище",
     "remote": "есть удалённый репозиторий",
+    "model": "проект обучает или применяет модель",
 }
 
 # --------------------------------------------------------------------------
@@ -346,13 +348,42 @@ AGENT_IGNORES = [".claude/worktrees/", ".claude/settings.local.json",
                  ".claude/logs/", "CLAUDE.local.md", ".env"]
 
 
+# Каталог сам по себе check-ignore не проверяет — нужен путь внутри него.
+IGNORE_SAMPLES = {
+    ".claude/worktrees/": ".claude/worktrees/w/README.md",
+    ".claude/settings.local.json": ".claude/settings.local.json",
+    ".claude/logs/": ".claude/logs/agents.jsonl",
+    "CLAUDE.local.md": "CLAUDE.local.md",
+    ".env": ".env",
+}
+
+
 def pr_git_ignore(c: Ctx) -> V:
-    txt = c.read(".gitignore")
-    if txt is None:
+    if c.read(".gitignore") is None:
         return bad("нет .gitignore", "завести .gitignore с агентскими записями")
-    missing = [n for n in AGENT_IGNORES if n not in txt]
+    rc, _ = c.git("rev-parse", "--git-dir")
+    if rc != 0:
+        return bad("не git-репозиторий, спросить git нечем", "git init")
+    # Спрашиваем git, а не ищем подстроку. Строка с комментарием в конце —
+    # `.claude/logs/    # журнал` — в файле есть, но шаблоном становится вся
+    # строка целиком, вместе с пробелами и словом «журнал», и не игнорирует
+    # ничего. Круг 2 поймал это на самом каркасе: два прогона независимо, и
+    # оба — последствием (git add -A утащил рабочие деревья), а не чтением.
+    samples = [IGNORE_SAMPLES[n] for n in AGENT_IGNORES]
+    _, out = c.git("check-ignore", "-v", "--no-index", *samples)
+    covered = set()
+    for line in out.splitlines():
+        src, _, _ = line.partition(":")
+        path = line.split("\t", 1)[1] if "\t" in line else ""
+        # Правило из личного ~/.config/git/ignore не считается: у него
+        # абсолютный путь, на чужой машине его нет, а каркас обязан быть
+        # самодостаточным. Ровно этим на одной машине маскировался промах.
+        if path and not src.startswith("/"):
+            covered.add(path)
+    missing = [n for n in AGENT_IGNORES if IGNORE_SAMPLES[n] not in covered]
     if missing:
-        return bad("в .gitignore нет: " + ", ".join(missing), ".gitignore")
+        return bad("git не игнорирует: " + ", ".join(missing),
+                   ".gitignore: комментарий пишется над строкой, а не в её конце")
     return ok()
 
 
@@ -618,6 +649,17 @@ def pr_adr_first(c: Ctx) -> V:
                "/muagba-base:write-adr — формат заводится до первого спора")
 
 
+def pr_stack_model(c: Ctx) -> V:
+    """Данные, версия модели и тот, кто судит числа.
+
+    Найдено вторым кругом: на ML-продукте слова «модель» не было ни в одном
+    из 79 вопросов банка, кроме В6.7. Словарь при этом полгода называл
+    version модели идентификатором прогона, схлопывая три разные сущности —
+    данные, код, модель — в одно число, и нашёл это исполнитель задачи, а не
+    гейт."""
+    return c.frames("docs/tech-stack.md", "Данные и модель")
+
+
 # Э5 ------------------------------------------------------------------------
 MANIFESTS = ["pyproject.toml", "package.json", "go.mod", "Cargo.toml",
              "requirements.txt", "Gemfile", "composer.json"]
@@ -693,9 +735,26 @@ def pr_env_secrets(c: Ctx) -> V:
 def pr_env_browser_cfg(c: Ctx) -> V:
     mcp = c.json(".mcp.json") or {}
     servers = mcp.get("mcpServers") or {}
-    if any("playwright" in k.lower() or "playwright" in json.dumps(v).lower()
-           for k, v in servers.items()):
-        return ok()
+    found = {k: v for k, v in servers.items()
+             if "playwright" in k.lower() or "playwright" in json.dumps(v).lower()}
+    if not found:
+        return bad("Playwright MCP не объявлен", ".mcp.json: сервер playwright")
+    # Объявление, которое не запустится, браузера не даёт. Круг 2 закрыл эту
+    # пробу строкой в файле, ни разу не подняв сервер. Поднять его отсюда мы
+    # не можем — это дорого и интерактивно, — но убедиться, что за строкой
+    # стоит исполнимая команда или адрес, можем и обязаны.
+    for name, spec in found.items():
+        if not isinstance(spec, dict):
+            return bad(f"сервер {name} объявлен не объектом", ".mcp.json")
+        if spec.get("url") or spec.get("type") in ("http", "sse"):
+            return ok(f"{name}: по адресу")
+        cmd = spec.get("command")
+        if not cmd:
+            return bad(f"у сервера {name} нет ни команды, ни адреса", ".mcp.json")
+        if shutil.which(cmd):
+            return ok(f"{name}: {cmd}")
+        return bad(f"команда сервера {name} не найдена: {cmd}",
+                   f".mcp.json → {name}: поставить {cmd} или объявить другой запуск")
     return bad("Playwright MCP не объявлен", ".mcp.json: сервер playwright")
 
 
@@ -717,7 +776,10 @@ LEVEL_HINTS = {
 
 
 def pr_check_levels(c: Ctx) -> V:
-    text = c.read(".claude/check.sh") or ""
+    # Без среза комментариев проверка из одних объяснений, почему тесты пока
+    # не запускаются, засчитывалась как настроенная: пробы искали слова в
+    # сыром тексте. Круг 2 прошёл так четыре пробы Э6 из семи.
+    text = strip_sh_comments(c.read(".claude/check.sh"))
     if "проверка кода ещё не настроена" in text:
         return bad("check.sh всё ещё угадывает, а не вызывает объявленные уровни",
                    ".claude/check.sh: заменить автоопределение явными командами")
@@ -729,11 +791,12 @@ def pr_check_levels(c: Ctx) -> V:
 
 
 def pr_check_e2e(c: Ctx) -> V:
-    text = c.read(".claude/check.sh") or ""
+    text = strip_sh_comments(c.read(".claude/check.sh"))
     if re.search(r"\b(e2e|playwright|cypress|browser)\b", text, re.I):
         return ok()
     return bad("браузерные сценарии не вызываются из check.sh",
-               "способность открыть страницу без критерия ничего не гарантирует")
+               "закомментированный вызов не вызов: способность открыть "
+               "страницу без критерия ничего не гарантирует")
 
 
 def pr_check_green(c: Ctx) -> V:
@@ -755,10 +818,80 @@ def pr_check_green(c: Ctx) -> V:
                "прогнать ./.claude/check.sh и прочитать вывод целиком")
 
 
+def yaml_run_commands(text: str) -> str:
+    """Команды из шагов `run:` файла сборки.
+
+    Полного разбора YAML здесь нет и быть не может — зависимости базы это
+    bash, git и python3, — но упоминание в комментарии или в названии шага
+    командой не считается. Ровно на этом круг 2 получил зелёную пробу при
+    красном арбитре."""
+    out: list[str] = []
+    block: int | None = None
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        indent = len(raw) - len(raw.lstrip())
+        if block is not None:
+            if stripped and indent <= block:
+                block = None
+            else:
+                if stripped and not stripped.startswith("#"):
+                    out.append(stripped)
+                continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        m = re.match(r"-?\s*run:\s*(\|[-+]?|>[-+]?)?\s*(.*)$", stripped)
+        if m:
+            if m.group(2):
+                out.append(m.group(2))
+            if m.group(1):
+                block = indent
+    return "\n".join(out)
+
+
+def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
+    """Арбитр, который слушает не ту ветку, не арбитр.
+
+    Второй круг: проект восемь этапов прожил на `master`, пока файл сборки
+    ждал `main`. Гейт был зелёным всё это время — вызов на месте, просто
+    никогда не срабатывал."""
+    listed: set[str] = set()
+    for m in re.finditer(r"branches:\s*\[([^\]]*)\]", text):
+        listed |= {b.strip().strip("'\"") for b in m.group(1).split(",") if b.strip()}
+    for m in re.finditer(r"branches:\s*\n((?:\s*-\s*.+\n)+)", text):
+        listed |= {l.strip().lstrip("-").strip().strip("'\"")
+                   for l in m.group(1).splitlines() if l.strip()}
+    if not listed or any("*" in b for b in listed):
+        return ok(name)
+    rc, branch = c.git("rev-parse", "--abbrev-ref", "HEAD")
+    if rc != 0 or not branch or branch == "HEAD":
+        # На ветке без коммитов rev-parse молчит, а имя уже есть — и именно
+        # тогда несовпадение дешевле всего исправить.
+        rc, branch = c.git("symbolic-ref", "--short", "HEAD")
+    if rc != 0 or not branch:
+        return ok(name)
+    if branch in listed:
+        return ok(f"{name}: {branch}")
+    return bad(f"{name} слушает {', '.join(sorted(listed))}, а работа идёт в {branch}",
+               "привести имя ветки и триггер сборки в соответствие — иначе "
+               "арбитр не запускается ни разу, а гейт зелёный")
+
+
 def pr_check_ci(c: Ctx) -> V:
-    for wf in c.glob(".github/workflows/*.yml") + c.glob(".github/workflows/*.yaml"):
-        if "check.sh" in wf.read_text(encoding="utf-8", errors="replace"):
-            return ok()
+    files = c.glob(".github/workflows/*.yml") + c.glob(".github/workflows/*.yaml")
+    if not files:
+        return bad("нет файла сборки",
+                   "арбитр обязан гонять ту же команду, иначе они разойдутся")
+    mentioned = None
+    for wf in files:
+        text = wf.read_text(encoding="utf-8", errors="replace")
+        if "check.sh" in yaml_run_commands(text):
+            return ci_branch_matches(c, wf.name, text)
+        if "check.sh" in text:
+            mentioned = wf.name
+    if mentioned:
+        return bad(f"в {mentioned} check.sh упомянут, но не запускается",
+                   "поставить вызов в шаг run: — в комментарии или в названии "
+                   "шага он арбитром не становится")
     return bad("CI не вызывает check.sh",
                "арбитр обязан гонять ту же команду, иначе они разойдутся")
 
@@ -907,7 +1040,45 @@ def pr_roles_board(c: Ctx) -> V:
     if not meaningful(section(c.read("docs/workflow.md") or "", "Когда двое трогают одно")):
         return bad("не записано, что делать, когда двое трогают один файл",
                    "docs/workflow.md, раздел «Когда двое трогают одно»")
-    return ok()
+    return pr_roles_tasks_home(c)
+
+
+# Проверяем свойство, а не инструмент: правило переживёт и смену трекера, и
+# уход любого из сегодняшних решений, а проба на конкретный плагин — нет.
+# ADR-0008.
+TASKS_OUTSIDE = "вне дерева"
+TASKS_INSIDE = "в дереве, один агент за раз"
+
+
+def pr_roles_tasks_home(c: Ctx) -> V:
+    body = section(c.read("docs/workflow.md") or "", "Где живут задачи")
+    if not meaningful(body):
+        return bad("не записано, где живёт общее состояние задач",
+                   "docs/workflow.md, раздел «Где живут задачи»")
+    m = re.search(r"Хранилище:\s*(.+)", body)
+    if not m:
+        return bad("в разделе «Где живут задачи» нет строки «Хранилище:»",
+                   "закончить раздел маркером: Хранилище: <что> ← "
+                   f"{TASKS_OUTSIDE} | {TASKS_INSIDE}")
+    line = m.group(1)
+    if TASKS_INSIDE in line:
+        # Честный однопоточный режим. Ничего не проверяем сверх того, что
+        # выбор сделан осознанно: файл в репозитории для одного агента
+        # работает, и запрещать его незачем.
+        return ok("состояние в дереве, работа однопоточная")
+    if TASKS_OUTSIDE not in line:
+        return bad("у строки «Хранилище:» нет маркера",
+                   f"дописать ← {TASKS_OUTSIDE} или ← {TASKS_INSIDE}")
+    # Заявлено «вне дерева». Если названа не встроенная механика, а сервер —
+    # он должен быть объявлен: круг 2 закрыл соседнюю пробу строкой в файле,
+    # ни разу не подняв сервер, и повторять это здесь не будем.
+    if re.search(r"\bMCP\b", line, re.I):
+        servers = (c.json(".mcp.json") or {}).get("mcpServers") or {}
+        if not servers:
+            return bad("состояние задач заявлено в MCP, но серверов в .mcp.json нет",
+                       ".mcp.json: объявить сервер трекера — см. Э5")
+        return ok(f"вне дерева, серверов в .mcp.json: {len(servers)}")
+    return ok("вне дерева")
 
 
 # Э9 ------------------------------------------------------------------------
@@ -1000,7 +1171,8 @@ def pr_observe_lessons(c: Ctx) -> V:
 
 
 # Э11 -----------------------------------------------------------------------
-FRAMES_DOCS = ("docs/constitution.md", "docs/tech-stack.md", "docs/structure.md")
+FRAMES_DOCS = ("docs/constitution.md", "docs/tech-stack.md", "docs/structure.md",
+               "docs/definition-of-done.md", "docs/workflow.md")
 
 
 def strip_sh_comments(text: str | None) -> str:
@@ -1102,6 +1274,8 @@ PROBES = [
           fills=("docs/tech-stack.md", "таблица стека"), run=pr_stack_exists),
     Probe("stack.forbidden", "Э4", "список запрещённого непуст",
           fills=("docs/tech-stack.md", "Запрещено тянуть"), run=pr_stack_forbidden),
+    Probe("stack.model", "Э4", "данные и модель описаны", needs="model",
+          fills=("docs/tech-stack.md", "Данные и модель"), run=pr_stack_model),
     Probe("structure.exists", "Э4", "раскладка описана", run=pr_structure_exists),
     Probe("structure.principle", "Э4", "записан признак размещения",
           fills=("docs/structure.md", "Принцип"), run=pr_structure_principle),

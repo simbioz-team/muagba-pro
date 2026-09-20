@@ -154,6 +154,7 @@ fills машинных проб   ⊆   цели из «Заполняет:» б
 | `ui` | `env.browser-cfg`, `env.browser-works`, `check.e2e` | вопрос В5.1 |
 | `storage` | `env.seed` | вопрос В4.5 |
 | `remote` | `git.protected` | вопрос В0.1 |
+| `model` | `stack.model` | вопрос В4.11 |
 
 Признак не объявлен — соответствующие пробы дают `unknown`, и конвейер
 спрашивает.
