@@ -5,6 +5,9 @@
   "owner": {
     "name": "Rustam"
   },
+  "allowCrossMarketplaceDependenciesOn": [
+    "docsys"
+  ],
   "plugins": [
     {
       "name": "muagba-base",

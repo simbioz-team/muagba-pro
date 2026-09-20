@@ -104,6 +104,21 @@ if [ -d "$TEMPLATE" ]; then
     || fail "setup_state: чистый каркас должен начинаться с Э0" "$(printf '%s' "$OUT" | tail -3)"
 fi
 
+# --- setup_state: честно пустая папка ---------------------------------------
+# Состояние «до Э0»: ни .git, ни .claude/. Это первая команда конвейера на
+# самом обычном новом проекте, и она обязана отвечать JSON'ом, а не падать.
+EMPTY=$(mktemp -d)
+OUT=$(cd "$EMPTY" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
+rm -rf "$EMPTY"
+[ "$CODE" -eq 0 ] || fail "setup_state: код $CODE на пустой папке" "$OUT"
+printf '%s' "$OUT" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("next_stage")=="Э0" else 1)' 2>/dev/null \
+  || fail "setup_state: на пустой папке ждали JSON с next_stage Э0" "$(printf '%s' "$OUT" | head -3)"
+
+# Дом проектом не считается: подъём вверх когда-то объявлял корнем его и писал
+# в глобальный ~/.claude/setup.json.
+OUT=$(cd "$HOME" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
+[ "$CODE" -eq 2 ] || fail "setup_state: в домашнем каталоге ждали отказ, код $CODE" "$OUT"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"
