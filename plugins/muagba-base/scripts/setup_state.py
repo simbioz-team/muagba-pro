@@ -964,6 +964,17 @@ def pr_observe_log(c: Ctx) -> V:
     p = c.p(".claude/logs/agents.jsonl")
     if p.exists() and p.stat().st_size > 0:
         return ok()
+    # log-agent.sh намеренно пишет в каталог сессии, а не в дерево, где
+    # оказался сабагент: агент принадлежит запустившей его сессии. Если
+    # сессия открыта не в проекте — из worktree, из соседнего каталога, со
+    # стенда, — журнал непуст, но лежит не здесь. Требовать его здесь значит
+    # требовать невозможного: три прогона обкатки подряд не смогли закрыть
+    # Э10 именно так и правильно отказались подложить файл руками.
+    sess = os.environ.get("CLAUDE_PROJECT_DIR")
+    if sess:
+        q = Path(sess) / ".claude" / "logs" / "agents.jsonl"
+        if q.resolve() != p.resolve() and q.exists() and q.stat().st_size > 0:
+            return ok(f"журнал ведётся в каталоге сессии: {q}")
     return bad("журнал агентов пуст",
                "он непуст только если агенты уже работали — закроется на Э11")
 
@@ -1341,6 +1352,24 @@ def next_stage(verdicts: dict, opts: Options) -> str | None:
     return None
 
 
+def open_stages(verdicts: dict, opts: Options) -> list[str]:
+    return [s for s in STAGE_ORDER if not stage_closed(s, verdicts, opts)]
+
+
+def frontier(verdicts: dict, opts: Options) -> str | None:
+    """Где работа идёт на самом деле: следующий после последнего закрытого.
+
+    Отличается от next_stage, когда ранний этап остался незакрытым, а работа
+    ушла вперёд. Тогда «продолжить с Э0» на проекте, доведённом до Э5, —
+    формально правда, а по существу ложь: человек читает это как «всё
+    потеряно». Обкатка поймала ровно этот случай."""
+    closed = [i for i, s in enumerate(STAGE_ORDER) if stage_closed(s, verdicts, opts)]
+    if not closed:
+        return STAGE_ORDER[0]
+    nxt = max(closed) + 1
+    return STAGE_ORDER[nxt] if nxt < len(STAGE_ORDER) else None
+
+
 def orphans(state: State) -> list[str]:
     return sorted(k for k in state.confirmed if k not in BY_ID)
 
@@ -1403,6 +1432,14 @@ def render_human(ctx: Ctx, state: State, verdicts: dict, opts: Options) -> str:
         if unk:
             bits.append(f"без ответа: {unk}")
         out.append(f"Продолжить с {nxt} «{STAGE_TITLE[nxt]}»" + (": " + ", ".join(bits) if bits else ""))
+        front = frontier(verdicts, opts)
+        if front != nxt:
+            where = ("все последующие этапы закрыты" if front is None
+                     else f"работа дошла до {front}")
+            behind = [s for s in open_stages(verdicts, opts)
+                      if front is None or STAGE_ORDER.index(s) < STAGE_ORDER.index(front)]
+            out.append(f"    Это незакрытый этап позади, а не потеря: {where}. "
+                       f"Осталось закрыть: {', '.join(behind)}.")
     und = undeclared(state, verdicts)
     if und:
         out.append("Не объявлены признаки: " + ", ".join(f"{t} ({TRAITS[t]})" for t in und))
@@ -1429,6 +1466,11 @@ def render_json(ctx: Ctx, state: State, verdicts: dict, opts: Options) -> str:
         })
     return json.dumps({
         "next_stage": next_stage(verdicts, opts),
+        # Первый незакрытый и «где идёт работа» — разные вещи, и агент,
+        # ведущий по конвейеру, должен различать их, а не гнать человека
+        # в начало из-за одного неподтверждённого гейта на Э0.
+        "frontier": frontier(verdicts, opts),
+        "open_stages": open_stages(verdicts, opts),
         "stages": stages,
         "traits": state.traits,
         "undeclared_traits": undeclared(state, verdicts),

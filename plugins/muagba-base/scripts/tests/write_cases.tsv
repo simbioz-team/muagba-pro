@@ -15,3 +15,12 @@ build/out.txt	python3 build.py > build/out.txt
 -	python3 -c "print(1)"
 -	cat docs/constitution.md
 .env.example	printf 'K=\n' > .env.example
+docs/constitution.md	python3 -c "open('docs/constitution.md','w').write('x')"
+docs/constitution.md	python3 -c "from pathlib import Path; Path('docs/constitution.md').write_text('x')"
+uv.lock	python3 -c "import os; os.remove('uv.lock')"
+uv.lock	uv run python -c "open('uv.lock','a').write('x')"
+/p/uv.lock	cd /p && echo x >> uv.lock
+docs/sources/brief.md	cd docs/sources && sed -i s/a/b/ brief.md
+-	python3 -c "open('docs/constitution.md').read()"
+-	echo "не пиши open('docs/constitution.md','w')"
+-	cd /tmp && echo hi

@@ -7,13 +7,20 @@
 
 **Границы честно.** Это не песочница и не полный разбор shell. Ловятся
 очевидные формы записи, которыми обходят запрет не думая: перенаправление,
-tee, sed -i, cp/mv, dd of=, truncate. Через `python3 -c` или подстановку
-переменной обойти можно, и это осознанно: полный разбор произвольной оболочки
+tee, sed -i, cp/mv, dd of=, truncate, а также запись из `python3 -c` и
+heredoc'а — на Python-проекте это не хитрость, а основная идиома правки
+файла. Подстановка переменной (`f=docs/constitution.md; echo x > $f`) и
+запись из другого языка проходят: полный разбор произвольной оболочки
 средствами регулярных выражений — обещание, которое нельзя сдержать.
+
+Относительные цели достраиваются от `cd`, пройденного в той же команде:
+без этого `cd <проект> && echo x >> uv.lock` обходил запрет, хотя тот же
+файл абсолютным путём блокировался.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import sys
@@ -23,6 +30,21 @@ REDIRECTS = {">", ">>", "1>", "2>", "&>", ">|"}
 # < /dev/null` отдавал в цели и `<`, и `/dev/null`.
 INPUTS = {"<", "<<", "<<<", "0<"}
 LAST_ARG_CMDS = {"cp", "mv", "install", "rsync"}
+
+# Запуск интерпретатора: сам по себе или через обёртку. Обёртки перечислены
+# поимённо, а не «любой токен», иначе `echo python3` снова блокировался бы
+# за упоминание — ту же ошибку уже чинили в cmd_danger.py.
+PY_EXE = re.compile(r"^(python|python[23](\.\d+)?|py)$")
+PY_WRAPPERS = {"uv", "uvx", "poetry", "pipenv", "env", "nohup", "time", "sudo"}
+
+# Запись из Python. Кавычки необязательны: shlex в posix-режиме их снимает,
+# и до нас `open('x','w')` доезжает как `open(x,w)`.
+Q = r"""["']?"""
+PY_OPEN = re.compile(rf"""\bopen\s*\(\s*{Q}([^"',)\s]+){Q}\s*,\s*{Q}([rwax+bt]+){Q}""")
+PY_PATH = re.compile(
+    rf"""\bPath\s*\(\s*{Q}([^"',)\s]+){Q}\s*\)\s*\.\s*"""
+    r"""(write_text|write_bytes|unlink|touch|rename|replace)\b""")
+PY_OS = re.compile(rf"""\bos\s*\.\s*(remove|unlink)\s*\(\s*{Q}([^"',)\s]+){Q}""")
 
 
 def segments(command: str) -> list[list[str]]:
@@ -46,6 +68,43 @@ def segments(command: str) -> list[list[str]]:
     return out
 
 
+def argv_of(parts: list[str]) -> list[str]:
+    """Токены без перенаправлений: собственно команда и её аргументы."""
+    argv, skip = [], False
+    for tok in parts:
+        if skip:
+            skip = False
+            continue
+        if tok in REDIRECTS or tok in INPUTS:
+            skip = True
+            continue
+        if tok.startswith((">", "<")) or tok in ("2>&1", "&>>"):
+            continue
+        argv.append(tok)
+    return argv
+
+
+def python_targets(argv: list[str]) -> list[str]:
+    """Пути, в которые пишет код Python, переданный через -c или heredoc.
+
+    Тело heredoc'а доезжает сюда отдельными токенами: `<<` съедает только
+    метку, остальное остаётся в argv. Поэтому склеиваем и ищем по тексту —
+    но лишь в сегменте, который и правда запускает интерпретатор.
+    """
+    head = argv[0].rsplit("/", 1)[-1]
+    if not PY_EXE.match(head):
+        if head not in PY_WRAPPERS:
+            return []
+        if not any(PY_EXE.match(a.rsplit("/", 1)[-1]) for a in argv[1:]):
+            return []
+    text = " ".join(argv[1:])
+    found = [m.group(1) for m in PY_OPEN.finditer(text)
+             if set(m.group(2)) & set("wax+")]
+    found += [m.group(1) for m in PY_PATH.finditer(text)]
+    found += [m.group(2) for m in PY_OS.finditer(text)]
+    return found
+
+
 def targets(parts: list[str]) -> list[str]:
     if not parts:
         return []
@@ -66,21 +125,13 @@ def targets(parts: list[str]) -> list[str]:
                 break
         i += 1
 
-    argv, skip = [], False
-    for tok in parts:
-        if skip:
-            skip = False
-            continue
-        if tok in REDIRECTS or tok in INPUTS:
-            skip = True
-            continue
-        if tok.startswith((">", "<")) or tok in ("2>&1", "&>>"):
-            continue
-        argv.append(tok)
+    argv = argv_of(parts)
     if not argv:
         return found
     cmd = argv[0].rsplit("/", 1)[-1]
     args = argv[1:]
+
+    found += python_targets(argv)
 
     if cmd == "tee":
         found += [a for a in args if not a.startswith("-")]
@@ -101,12 +152,28 @@ def targets(parts: list[str]) -> list[str]:
 
 def main() -> int:
     command = sys.stdin.read()
-    seen = []
+    seen: list[str] = []
+    cwd = ""  # куда увёл `cd`, пройденный раньше в этой же команде
     for parts in segments(command):
+        argv = argv_of(parts)
+        if argv and argv[0].rsplit("/", 1)[-1] == "cd":
+            rest = [a for a in argv[1:] if not a.startswith("-")]
+            if len(rest) == 1 and rest[0] != "-":
+                cwd = (rest[0] if rest[0].startswith("/")
+                       else os.path.normpath(os.path.join(cwd, rest[0])))
+            else:
+                # `cd` без аргумента уводит домой, `cd -` — в прошлый
+                # каталог: откуда именно, отсюда не видно.
+                cwd = ""
+            continue
         for t in targets(parts):
             # Обрывки перенаправлений (`&`, `1`, `2`) — не пути. Разбор
             # оболочки регулярками неизбежно оставляет такой мусор.
-            if t and not re.fullmatch(r"[&|;<>\d]+", t) and t not in seen:
+            if not t or re.fullmatch(r"[&|;<>\d]+", t):
+                continue
+            if cwd and not t.startswith("/"):
+                t = os.path.normpath(os.path.join(cwd, t))
+            if t not in seen:
                 seen.append(t)
     for t in seen:
         print(t)
