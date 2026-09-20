@@ -20,6 +20,9 @@
       "Bash(git reset --hard *)"
     ]
   },
+  "worktree": {
+    "baseRef": "head"
+  },
   "extraKnownMarketplaces": {
     "muagba-pro": {
       "source": {
