@@ -267,6 +267,55 @@ printf '%s\n- **Проверка формы:** `make check-specs`\n' "$CS_FIVE" 
   || fail "cycle.specs: чужой конвейер отвергнут — проба меряет инструмент" "$(cat "$CS/specs/README.md")"
 rm -rf "$CS"
 
+# --- roles: кто делает и кто проверяет объявляет проект ----------------------
+# Раньше обе пробы разрешали имена через каталог агентов самого плагина и были
+# зелены всегда: описывали базу, а не проект.
+RL=$(mktemp -d); mkdir -p "$RL/docs" "$RL/.claude/agents"
+printf '# Цикл\n' > "$RL/docs/workflow.md"
+[ "$(verdict "$RL" roles.defined)" = "fail" ] \
+  || fail "roles.defined: без раздела «Кто делает» должна краснеть" "$(cat "$RL/docs/workflow.md")"
+
+# Имя без маркера — не ответ: неизвестно, агент это, команда или человек.
+printf '## Кто делает\n\n- **Исполнитель:** implementer\n- **Проверяющий:** reviewer\n' \
+  >> "$RL/docs/workflow.md"
+[ "$(verdict "$RL" roles.defined)" = "fail" ] \
+  || fail "roles.defined: имя без маркера принято" "$(cat "$RL/docs/workflow.md")"
+
+# Назван агент, которого нет, — конвейер бы молча не позвал никого.
+printf '# Цикл\n\n## Кто делает\n\n- **Исполнитель:** codewriter ← агент\n- **Проверяющий:** reviewer ← агент\n' \
+  > "$RL/docs/workflow.md"
+[ "$(verdict "$RL" roles.defined)" = "fail" ] \
+  || fail "roles.defined: несуществующий агент принят" "$(detail "$RL" roles.defined)"
+detail "$RL" roles.defined | grep -q 'такой роли нет' \
+  || fail "roles.defined: несуществующий агент отвергнут не по той причине" "$(detail "$RL" roles.defined)"
+
+# Один и тот же и пишет, и проверяет — та самая ошибка, ради которой роли разведены.
+printf '# Цикл\n\n## Кто делает\n\n- **Исполнитель:** reviewer ← агент\n- **Проверяющий:** reviewer ← агент\n' \
+  > "$RL/docs/workflow.md"
+detail "$RL" roles.defined | grep -q 'одно и то же' \
+  || fail "roles.defined: исполнитель и проверяющий совпали, проба молчит" "$(detail "$RL" roles.defined)"
+
+# Роли базы: обе пробы закрываются.
+printf '# Цикл\n\n## Кто делает\n\n- **Исполнитель:** implementer ← агент\n- **Проверяющий:** reviewer ← агент\n' \
+  > "$RL/docs/workflow.md"
+[ "$(verdict "$RL" roles.defined)" = "ok" ] && [ "$(verdict "$RL" roles.split)" = "ok" ] \
+  || fail "roles: роли базы должны закрывать обе пробы" "$(detail "$RL" roles.split)"
+
+# Проект переопределил проверяющего и дал ему правку — вот это и надо ловить.
+printf -- '---\nname: reviewer\ntools: Read, Grep, Edit\n---\nтело\n' > "$RL/.claude/agents/reviewer.md"
+detail "$RL" roles.split | grep -q 'умеет править' \
+  || fail "roles.split: проверяющий с правкой пропущен" "$(detail "$RL" roles.split)"
+rm -f "$RL/.claude/agents/reviewer.md"
+
+# Проверяет человек — честный режим, машине сказать нечего.
+printf '# Цикл\n\n## Кто делает\n\n- **Исполнитель:** implementer ← агент\n- **Проверяющий:** тимлид ← человек\n' \
+  > "$RL/docs/workflow.md"
+[ "$(verdict "$RL" roles.split)" = "ok" ] \
+  || fail "roles.split: человеческое ревью объявлено провалом" "$(detail "$RL" roles.split)"
+detail "$RL" roles.split | grep -q 'машинной гарантии нет' \
+  || fail "roles.split: честный режим закрыт молча, без оговорки" "$(detail "$RL" roles.split)"
+rm -rf "$RL"
+
 # --- конституция ищется, а не задаётся адресом -------------------------------
 # Spec Kit держит её в .specify/memory/. Проба на наш путь красит проект,
 # который всё сделал правильно, просто другим инструментом.

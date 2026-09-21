@@ -1035,29 +1035,81 @@ def agent_file(c: Ctx, name: str) -> Path | None:
     return None
 
 
+# Кто делает и кто проверяет — объявляет проект, а не привозит база. Раньше
+# обе пробы разрешали имена implementer/reviewer через каталог агентов самого
+# плагина и потому были зелены всегда: они описывали базу, а не проект. Свойство
+# «исполнение и оценка разведены» при этом не проверялось, а утверждалось.
+# ADR-0011.
+ROLE_AGENT, ROLE_CMD, ROLE_HUMAN = "агент", "команда", "человек"
+ROLE_KINDS = (ROLE_AGENT, ROLE_CMD, ROLE_HUMAN)
+ROLE_MARK = " | ".join(f"← {k}" for k in ROLE_KINDS)
+
+
+def role_decl(c: Ctx, label: str) -> tuple[str, str]:
+    """(кто, чем является) из docs/workflow.md → «Кто делает»."""
+    body = section(c.read("docs/workflow.md") or "", "Кто делает")
+    if not meaningful(body):
+        return ("", "")
+    m = re.search(rf"^\s*[-*]\s*\*\*{label}:?\*\*:?\s*(.+)$", body, re.M)
+    if not m:
+        return ("", "")
+    raw = m.group(1).strip()
+    kind = next((k for k in ROLE_KINDS if re.search(rf"←\s*{k}", raw)), "")
+    return (re.sub(r"←.*$", "", raw).strip().strip("`*"), kind)
+
+
 def pr_roles_defined(c: Ctx) -> V:
-    missing = [n for n in ("implementer", "reviewer") if agent_file(c, n) is None]
-    if missing:
-        return bad("нет ролей: " + ", ".join(missing), ".claude/agents/ или плагин")
-    return ok()
+    if not meaningful(section(c.read("docs/workflow.md") or "", "Кто делает")):
+        return bad("не объявлено, кто делает работу и кто её проверяет",
+                   f"docs/workflow.md, раздел «Кто делает»: две строки с маркером {ROLE_MARK}")
+    seen, out = {}, []
+    for label in ("Исполнитель", "Проверяющий"):
+        who, kind = role_decl(c, label)
+        if not who:
+            out.append(f"нет строки «{label}:»")
+            continue
+        if not kind:
+            out.append(f"у «{label}» нет маркера {ROLE_MARK}")
+            continue
+        if kind == ROLE_AGENT and agent_file(c, who) is None:
+            out.append(f"{label} назван агентом «{who}», а такой роли нет "
+                       "ни в .claude/agents/, ни в плагинах")
+        seen[label] = (who, kind)
+    if out:
+        return bad("; ".join(out), "docs/workflow.md, раздел «Кто делает»")
+    if len(seen) == 2 and seen["Исполнитель"] == seen["Проверяющий"]:
+        return bad(f"исполнитель и проверяющий — одно и то же ({seen['Исполнитель'][0]})",
+                   "писавший код оценивает свой замысел, а не результат; "
+                   "нужны разные")
+    return ok(", ".join(f"{k.lower()}: {v[0]} ({v[1]})" for k, v in seen.items()))
 
 
 def pr_roles_split(c: Ctx) -> V:
-    p = agent_file(c, "reviewer")
+    who, kind = role_decl(c, "Проверяющий")
+    if not kind:
+        return bad("не объявлено, кем проверяется работа",
+                   f"docs/workflow.md → «Кто делает»: **Проверяющий:** <кто> {ROLE_MARK}")
+    if kind != ROLE_AGENT:
+        # Честная ветка. У человека права правки есть по определению, у чужой
+        # команды их не прочитать — требовать обратного значит учить закрывать
+        # пробу враньём. Выбор записан и виден, это и есть его цена.
+        return ok(f"проверяет {kind} «{who}» — машинной гарантии нет")
+    p = agent_file(c, who)
     if p is None:
-        return bad("нет роли reviewer")
+        return bad(f"роли «{who}» нет", "docs/workflow.md → «Кто делает»")
     head = p.read_text(encoding="utf-8", errors="replace")
     fm = head.split("---")[1] if head.startswith("---") and head.count("---") >= 2 else ""
     m = re.search(r"^tools:\s*(.+)$", fm, re.M)
     if not m:
-        return bad("у reviewer не ограничен набор инструментов",
-                   "frontmatter: tools: Read, Grep, Glob, Bash")
+        return bad(f"у проверяющего «{who}» не ограничен набор инструментов",
+                   "frontmatter роли: tools: Read, Grep, Glob, Bash")
     tools = {t.strip() for t in m.group(1).split(",")}
     leaked = sorted(tools & set(EDIT_TOOLS))
     if leaked:
-        return bad("проверяющий умеет править: " + ", ".join(leaked),
-                   "он начнёт чинить вместо того, чтобы докладывать")
-    return ok()
+        return bad(f"проверяющий «{who}» умеет править: " + ", ".join(leaked),
+                   "он начнёт чинить найденное вместо того, чтобы доложить, "
+                   "и находка не дойдёт до человека")
+    return ok(f"{who}: только чтение")
 
 
 def pr_roles_isolation(c: Ctx) -> V:
@@ -1458,10 +1510,10 @@ PROBES = [
     Probe("enforce.bash-works", "Э7", "запрет на команду срабатывает", run=pr_enforce_bash_works),
     Probe("enforce.gate-works", "Э7", "красная проверка держит ход", run=pr_enforce_gate_works),
 
-    Probe("roles.defined", "Э8", "роли доступны",
-          fills=(".claude/agents/*.md", None), run=pr_roles_defined),
+    Probe("roles.defined", "Э8", "названо, кто делает и кто проверяет",
+          fills=("docs/workflow.md", "Кто делает"), run=pr_roles_defined),
     Probe("roles.split", "Э8", "исполнение и оценка разведены",
-          fills=(".claude/agents/reviewer.md", None), run=pr_roles_split),
+          fills=("docs/workflow.md", "Кто делает"), run=pr_roles_split),
     Probe("roles.isolation", "Э8", "свежее дерево заведётся",
           fills=(".worktreeinclude", None), run=pr_roles_isolation),
     Probe("roles.board", "Э8", "общее состояние задачи есть",
