@@ -1,7 +1,7 @@
 {
   "name": "muagba-base",
   "displayName": "MUAGBA Base",
-  "version": "0.11.0",
+  "version": "0.10.6",
   "dependencies": [
     {
       "name": "docsys",
@@ -17,7 +17,6 @@
     "multi-agent",
     "guardrails",
     "hooks",
-    "spec-driven",
     "setup"
   ]
 }
