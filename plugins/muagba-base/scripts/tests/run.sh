@@ -187,6 +187,58 @@ printf '%s' "$OUT" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.st
 OUT=$(cd "$HOME" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
 [ "$CODE" -eq 2 ] || fail "setup_state: в домашнем каталоге ждали отказ, код $CODE" "$OUT"
 
+# --- cycle.specs: конвейер фич объявлен полями, а не именем ------------------
+# База конвейер фич не несёт. Проба читает пять полей и обязана краснеть, пока
+# хоть одно не объявлено: имя конвейера гейту ничего не говорит, а прежняя
+# версия этой пробы запускала наш скрипт по нашей форме и отвергала
+# безупречную чужую работу по написанию.
+verdict() {  # <корень> <id пробы> → verdict пробы
+  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(next((p['verdict'] for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
+}
+
+CS=$(mktemp -d)
+mkdir -p "$CS/specs"
+printf 'Артефакты фич.\n' > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "fail" ] \
+  || fail "cycle.specs: без полей должна краснеть" "$(cd "$CS" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
+
+# Четыре из пяти — всё ещё красная: недообъявленный конвейер не проверяем.
+{ printf -- '- **Артефакты:** specs/<NNN>/spec.md\n'
+  printf -- '- **Готова к коду:** status active\n'
+  printf -- '- **Задача → требование:** ссылка [R1]\n'
+  printf -- '- **Готовность ставит:** человек\n'; } >> "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "fail" ] \
+  || fail "cycle.specs: без «Проверка формы» должна краснеть" "$(cat "$CS/specs/README.md")"
+
+printf -- '- **Проверка формы:** check_specs.py из .claude/check.sh\n' >> "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "ok" ] \
+  || fail "cycle.specs: пять объявленных полей должны закрывать пробу" "$(cat "$CS/specs/README.md")"
+
+# Чужая форма закрывает пробу так же: проверяется свойство, не наш файл.
+{ printf 'Конвейер фич\n\n'
+  printf -- '- **Артефакты:** specs/<NNN>-<slug>/spec.md, Spec Kit\n'
+  printf -- '- **Готова к коду:** пройден checklists/requirements.md\n'
+  printf -- '- **Задача → требование:** [US1] и FR-NNN\n'
+  printf -- '- **Готовность ставит:** человек после /speckit-clarify\n'
+  printf -- '- **Проверка формы:** /speckit-analyze перед планом\n'; } > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "ok" ] \
+  || fail "cycle.specs: чужой конвейер отвергнут — проба меряет инструмент" "$(cat "$CS/specs/README.md")"
+rm -rf "$CS"
+
+# --- конституция ищется, а не задаётся адресом -------------------------------
+# Spec Kit держит её в .specify/memory/. Проба на наш путь красит проект,
+# который всё сделал правильно, просто другим инструментом.
+CP=$(mktemp -d)
+mkdir -p "$CP/.specify/memory"
+printf '# Конституция\n\n## Core Principles\n\n### I. Раз\nТело. Исполнение: машинно\n' \
+  > "$CP/.specify/memory/constitution.md"
+[ "$(verdict "$CP" const.exists)" = "ok" ] \
+  || fail "const.exists: конституция в .specify/memory не найдена" "$(cd "$CP" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
+rm -rf "$CP"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"

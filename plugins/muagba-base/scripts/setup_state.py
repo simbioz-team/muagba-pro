@@ -542,8 +542,29 @@ def pr_product_glossary(c: Ctx) -> V:
 PRINCIPLE = re.compile(r"^###\s+(.+?)\s*$", re.M)
 
 
+# Конституция бывает не только нашей: Spec Kit держит её в
+# `.specify/memory/constitution.md`. Проба обязана проверять свойство, а не
+# адрес нашего файла (ADR-0007). Список закрыт и короток намеренно: открытый
+# поиск по дереву начнёт находить чужое.
+CONST_PLACES = ("docs/constitution.md", ".specify/memory/constitution.md",
+                "memory/constitution.md")
+CONST_HEADS = ("Принципы", "Core Principles")
+GOVERNANCE_HEADS = ("Изменение конституции", "Governance", "Порядок изменения")
+
+
+def const_path(c: Ctx) -> str | None:
+    for rel in CONST_PLACES:
+        if c.exists(rel):
+            return rel
+    return None
+
+
 def principles(c: Ctx) -> list[str]:
-    body = section(c.read("docs/constitution.md") or "", "Принципы")
+    rel = const_path(c)
+    if rel is None:
+        return []
+    text = c.read(rel) or ""
+    body = next((s for h in CONST_HEADS if (s := section(text, h))), None)
     if not body:
         return []
     out = []
@@ -554,11 +575,16 @@ def principles(c: Ctx) -> list[str]:
 
 
 def pr_const_exists(c: Ctx) -> V:
-    if not c.exists("docs/constitution.md"):
-        return bad("нет docs/constitution.md", "/doc-new")
-    if Path("docs/constitution.md").name not in c.registry():
+    rel = const_path(c)
+    if rel is None:
+        return bad("конституции нет ни в одном известном месте: "
+                   + ", ".join(CONST_PLACES), "/doc-new")
+    # Реестр спрашиваем только со своего места: ADR-0001 требует, чтобы
+    # документы рамок были документами системы документации, но чужой
+    # конвейер кладёт конституцию мимо неё, и это его право.
+    if rel.startswith("docs/") and Path(rel).name not in c.registry():
         return bad("конституции нет в реестре", "пересобрать реестры")
-    return ok()
+    return ok("" if rel == CONST_PLACES[0] else f"конституция проекта: {rel}")
 
 
 NUMBERING = re.compile(r"^[\s]*[IVXLCDM]+[.)]?\s*|^[\s]*\d+[.)]?\s*")
@@ -598,12 +624,23 @@ def pr_const_markers(c: Ctx) -> V:
             bare.append(head)
     if bare:
         return bad("без строки «Исполнение:» — " + "; ".join(bare[:3]),
-                   "у каждого принципа: Исполнение: машинно | только совет")
+                   "у каждого принципа: Исполнение: машинно | только совет. "
+                   "Принцип без способа исполнения — пожелание; в чужих шаблонах "
+                   "конституции этого поля нет, его дописывают")
     return ok()
 
 
 def pr_const_governance(c: Ctx) -> V:
-    return c.frames("docs/constitution.md", "Изменение конституции")
+    rel = const_path(c)
+    if rel is None:
+        return bad("конституции нет", "Э3: завести конституцию")
+    text = c.read(rel) or ""
+    for h in GOVERNANCE_HEADS:
+        if meaningful(section(text, h)):
+            return ok()
+    return bad(f"в {rel} не заполнен раздел про порядок изменения",
+               "раздел «Изменение конституции» (у чужого шаблона — «Governance»): "
+               "кто меняет, как принимается, что делать с уже написанным")
 
 
 def pr_dod_exists(c: Ctx) -> V:
@@ -646,7 +683,7 @@ def pr_adr_first(c: Ctx) -> V:
     if found:
         return ok()
     return bad("нет ни одного ADR помимо шаблона",
-               "/muagba-base:write-adr — формат заводится до первого спора")
+               "/doc-new adr — формат заводится до первого спора")
 
 
 def pr_stack_model(c: Ctx) -> V:
@@ -1086,6 +1123,44 @@ def pr_cycle_intake(c: Ctx) -> V:
     return c.frames("docs/workflow.md", "Откуда берётся задача")
 
 
+# Конвейер фич выбирает проект: свой, Spec Kit, OpenSpec, BMAD. База его не
+# несёт и не навязывает — она объявляет **интерфейс** к нему. Пять полей
+# ниже — всё, что нужно, чтобы машинная проверка стала возможна при любом
+# выборе: без них гейту нечего читать, а имя конвейера в toolchain.md ему
+# ничего не говорит. ADR-0007: проверяем свойство, а не инструмент.
+#
+# Проба ничего не запускает намеренно. Названную проверку исполняет
+# `.claude/check.sh`, а её зелёность держит check.green: гейт, который сам
+# бегает по объявленным командам, — вторая точка запуска и второй источник
+# правды о том, что считается пройденным.
+SPEC_FIELDS = (
+    ("Артефакты", "где лежат файлы фичи и как зовётся файл спеки"),
+    ("Готова к коду", "по какому признаку видно, что спеку можно брать в работу"),
+    ("Задача → требование", "как задача ссылается на требование"),
+    ("Готовность ставит", "кто и когда переводит спеку в готовую"),
+    ("Проверка формы", "чем форма проверяется машинно и откуда вызывается"),
+)
+
+
+def spec_field(text: str, name: str) -> str:
+    m = re.search(rf"^\s*[-*]\s*\*\*{re.escape(name)}:?\*\*:?\s*(.+)$", text, re.M)
+    return meaningful(m.group(1)) if m else ""
+
+
+def pr_cycle_specs(c: Ctx) -> V:
+    text = c.read("specs/README.md")
+    if not meaningful(text):
+        return bad("конвейер фич не объявлен",
+                   "specs/README.md, раздел «Конвейер фич»: пять строк — "
+                   + "; ".join(n for n, _ in SPEC_FIELDS))
+    missing = [n for n, _ in SPEC_FIELDS if not spec_field(text, n)]
+    if missing:
+        return bad("не объявлено: " + ", ".join(missing),
+                   "; ".join(f"**{n}:** {hint}" for n, hint in SPEC_FIELDS
+                             if n in missing))
+    return ok(short(spec_field(text, "Артефакты")))
+
+
 def pr_cycle_goal(c: Ctx) -> V:
     v = c.frames("docs/workflow.md", "Условие завершения")
     if v.verdict != OK:
@@ -1334,6 +1409,8 @@ PROBES = [
     Probe("roles.parallel", "Э8", "два агента не столкнулись", kind=HUMAN,
           watch=[".worktreeinclude"]),
 
+    Probe("cycle.specs", "Э9", "конвейер фич объявлен так, что его можно проверить",
+          fills=("конвейер фич: specs/README.md", None), run=pr_cycle_specs),
     Probe("cycle.intake", "Э9", "путь задачи записан",
           fills=("docs/workflow.md", "Откуда берётся задача"), run=pr_cycle_intake),
     Probe("cycle.goal", "Э9", "шаблон условия готов",
