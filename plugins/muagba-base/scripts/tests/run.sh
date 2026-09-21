@@ -192,6 +192,13 @@ OUT=$(cd "$HOME" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
 # хоть одно не объявлено: имя конвейера гейту ничего не говорит, а прежняя
 # версия этой пробы запускала наш скрипт по нашей форме и отвергала
 # безупречную чужую работу по написанию.
+detail() {  # <корень> <id пробы> → detail пробы
+  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(next((p.get('detail','') for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
+}
+
 verdict() {  # <корень> <id пробы> → verdict пробы
   (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
 import json,sys
@@ -200,10 +207,10 @@ print(next((p['verdict'] for s in d['stages'] for p in s['probes'] if p['id']=='
 }
 
 CS=$(mktemp -d)
-mkdir -p "$CS/specs"
+mkdir -p "$CS/specs" "$CS/.claude"
 printf 'Артефакты фич.\n' > "$CS/specs/README.md"
 [ "$(verdict "$CS" cycle.specs)" = "fail" ] \
-  || fail "cycle.specs: без полей должна краснеть" "$(cd "$CS" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
+  || fail "cycle.specs: без полей должна краснеть" "$(cat "$CS/specs/README.md")"
 
 # Четыре из пяти — всё ещё красная: недообъявленный конвейер не проверяем.
 { printf -- '- **Артефакты:** specs/<NNN>/spec.md\n'
@@ -213,9 +220,41 @@ printf 'Артефакты фич.\n' > "$CS/specs/README.md"
 [ "$(verdict "$CS" cycle.specs)" = "fail" ] \
   || fail "cycle.specs: без «Проверка формы» должна краснеть" "$(cat "$CS/specs/README.md")"
 
-printf -- '- **Проверка формы:** check_specs.py из .claude/check.sh\n' >> "$CS/specs/README.md"
+# Проза вместо команды — не ответ: договорённость без исполнимой проверки не
+# гейт. Три прогона обкатки завели три формы и ни одной проверки.
+CS_FIVE=$(cat "$CS/specs/README.md")
+printf '%s\n- **Проверка формы:** держится ревью\n' "$CS_FIVE" > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "fail" ] \
+  || fail "cycle.specs: «держится ревью» принято за проверку" "$(cat "$CS/specs/README.md")"
+detail "$CS" cycle.specs | grep -q 'не называет команду' \
+  || fail "cycle.specs: проза отвергнута не по той причине" "$(detail "$CS" cycle.specs)"
+
+# И самоссылка не годится: «вызывается из check.sh» без скрипта находила бы
+# себя в тексте самого check.sh.
+printf '# контракт check.sh\npytest\n' > "$CS/.claude/check.sh"
+printf '%s\n- **Проверка формы:** вызывается из check.sh\n' "$CS_FIVE" > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "fail" ] \
+  || fail "cycle.specs: самоссылка на check.sh принята за проверку" "$(cat "$CS/.claude/check.sh")"
+detail "$CS" cycle.specs | grep -q 'не называет команду' \
+  || fail "cycle.specs: самоссылка отвергнута не по той причине" "$(detail "$CS" cycle.specs)"
+
+# Команда названа, но нигде не вызывается — проверка, которую никто не
+# запускает, ничего не ловит.
+printf '%s\n- **Проверка формы:** `python3 tools/spec_lint.py`\n' "$CS_FIVE" > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "fail" ] \
+  || fail "cycle.specs: невызываемая проверка принята" "$(cat "$CS/.claude/check.sh")"
+
+printf 'python3 tools/spec_lint.py\npytest\n' > "$CS/.claude/check.sh"
 [ "$(verdict "$CS" cycle.specs)" = "ok" ] \
-  || fail "cycle.specs: пять объявленных полей должны закрывать пробу" "$(cat "$CS/specs/README.md")"
+  || fail "cycle.specs: вызываемая проверка должна закрывать пробу" "$(cat "$CS/.claude/check.sh")"
+
+# check.sh часто делегирует: требовать имя скрипта именно в нём значит
+# краснеть на проекте, который всё сделал правильно через make.
+printf 'make check\n' > "$CS/.claude/check.sh"
+printf 'check-specs:\n\tpython3 tools/spec_lint.py\n' > "$CS/Makefile"
+printf '%s\n- **Проверка формы:** `make check-specs`\n' "$CS_FIVE" > "$CS/specs/README.md"
+[ "$(verdict "$CS" cycle.specs)" = "ok" ] \
+  || fail "cycle.specs: цель make не признана проверкой" "$(cat "$CS/Makefile")"
 
 # Чужая форма закрывает пробу так же: проверяется свойство, не наш файл.
 { printf 'Конвейер фич\n\n'
@@ -223,7 +262,7 @@ printf -- '- **Проверка формы:** check_specs.py из .claude/check.
   printf -- '- **Готова к коду:** пройден checklists/requirements.md\n'
   printf -- '- **Задача → требование:** [US1] и FR-NNN\n'
   printf -- '- **Готовность ставит:** человек после /speckit-clarify\n'
-  printf -- '- **Проверка формы:** /speckit-analyze перед планом\n'; } > "$CS/specs/README.md"
+  printf -- '- **Проверка формы:** `make check-specs`\n'; } > "$CS/specs/README.md"
 [ "$(verdict "$CS" cycle.specs)" = "ok" ] \
   || fail "cycle.specs: чужой конвейер отвергнут — проба меряет инструмент" "$(cat "$CS/specs/README.md")"
 rm -rf "$CS"

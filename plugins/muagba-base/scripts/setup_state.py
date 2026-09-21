@@ -1138,13 +1138,55 @@ SPEC_FIELDS = (
     ("Готова к коду", "по какому признаку видно, что спеку можно брать в работу"),
     ("Задача → требование", "как задача ссылается на требование"),
     ("Готовность ставит", "кто и когда переводит спеку в готовую"),
-    ("Проверка формы", "чем форма проверяется машинно и откуда вызывается"),
+    ("Проверка формы", "команда, и она обязана вызываться из проверки проекта"),
 )
+
+# Команда узнаётся по имени файла с расширением или по пути со слэшем. Проза
+# («машинной нет», «держится ревью») таких токенов не содержит — и это ровно
+# тот ответ, который проба обязана не принять.
+SPEC_CMD = re.compile(r"[\w.\-/]*[\w\-]+\.(?:py|sh|js|mjs|ts|rb|pl|php|go|exe)\b"
+                      r"|[\w.\-]+/[\w.\-/]+")
+# Цель сборщика — такая же исполнимая проверка, как скрипт: `npm run
+# check:specs` ловится по имени цели, которое лежит в package.json.
+SPEC_TASK = re.compile(r"\b(?:npm|pnpm|yarn|bun|deno)\s+run\s+([\w:.\-]+)"
+                       r"|\b(?:make|just|task|nox|tox|cargo)\s+(?:-s\s+)?([\w:.\-]+)")
+
+
+def spec_commands(declared: str) -> list[str]:
+    """Что в объявлении похоже на исполнимую проверку. Пусто — это проза."""
+    out = SPEC_CMD.findall(declared)
+    out += [g for pair in SPEC_TASK.findall(declared) for g in pair if g]
+    return out
+
+# Где команда может вызываться. Список закрыт: check.sh — контракт Э6, но он
+# часто делегирует, и требовать имя скрипта именно в нём значит краснеть на
+# проекте, который всё сделал правильно через make (ADR-0011, правило 1).
+CHECK_HOMES = (".claude/check.sh", "Makefile", "justfile", "package.json",
+               "pyproject.toml", "Taskfile.yml", "noxfile.py")
+# Имя самого контейнера проверкой не считается: «вызывается из check.sh» без
+# скрипта иначе находило бы себя в тексте check.sh и зеленело впустую.
+CHECK_OWN = {Path(h).name for h in CHECK_HOMES}
 
 
 def spec_field(text: str, name: str) -> str:
+    """Значение поля как написано. Пустым считается незаполненный слот.
+
+    Возвращается **сырая** строка, а не результат meaningful(): тот прячет
+    код-спаны под заглушку, и объявленная в обратных кавычках команда
+    исчезала ровно там, где её надо прочитать."""
     m = re.search(rf"^\s*[-*]\s*\*\*{re.escape(name)}:?\*\*:?\s*(.+)$", text, re.M)
-    return meaningful(m.group(1)) if m else ""
+    if not m:
+        return ""
+    raw = m.group(1).strip()
+    return raw if meaningful(raw) else ""
+
+
+def check_homes(c: Ctx) -> list[tuple[str, str]]:
+    out = [(rel, c.read(rel) or "") for rel in CHECK_HOMES if c.exists(rel)]
+    out += [(p.relative_to(c.root).as_posix(),
+             p.read_text(encoding="utf-8", errors="replace"))
+            for p in c.glob(".github/workflows/*.yml")]
+    return out
 
 
 def pr_cycle_specs(c: Ctx) -> V:
@@ -1158,7 +1200,25 @@ def pr_cycle_specs(c: Ctx) -> V:
         return bad("не объявлено: " + ", ".join(missing),
                    "; ".join(f"**{n}:** {hint}" for n, hint in SPEC_FIELDS
                              if n in missing))
-    return ok(short(spec_field(text, "Артефакты")))
+
+    # Форма, которую ничего не проверяет, не держится даже у того, кто её
+    # придумал: три прогона обкатки завели три разные формы и ни одной
+    # проверки. Поэтому поле обязано называть команду, а команда — где-то
+    # вызываться. Какую форму она проверяет — не наше дело (ADR-0010).
+    declared = spec_field(text, "Проверка формы")
+    tokens = [x for x in spec_commands(declared) if Path(x).name not in CHECK_OWN]
+    if not tokens:
+        return bad(f"«Проверка формы» не называет команду: {short(declared, 60)}",
+                   "назвать исполнимую проверку — скрипт или путь к нему. "
+                   "Договорённость без исполнимой проверки — не гейт (Э6)")
+    for rel, body in check_homes(c):
+        for tok in tokens:
+            if tok in body:
+                return ok(f"{tok} вызывается из {rel}")
+    return bad(f"проверка формы объявлена ({tokens[0]}), но нигде не вызывается",
+               "вызвать её из .claude/check.sh — той единственной команды, "
+               "которую гоняют гейт и CI. Проверка, которую никто не "
+               "запускает, ничего не ловит")
 
 
 def pr_cycle_goal(c: Ctx) -> V:
