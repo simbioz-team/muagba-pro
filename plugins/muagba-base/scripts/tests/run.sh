@@ -8,6 +8,20 @@ FAILED=0
 
 fail() { printf 'СБОЙ  %s\n      %s\n' "$1" "$2"; FAILED=1; }
 
+detail() {  # <корень> <id пробы> → detail пробы
+  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(next((p.get('detail','') for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
+}
+
+verdict() {  # <корень> <id пробы> → verdict пробы
+  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(next((p['verdict'] for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
+}
+
 # --- guard-bash: разбор rm ---------------------------------------------------
 # rm_danger.py печатает опасную цель и выходит с 1; молчит и 0 — команда чиста.
 while IFS=$'\t' read -r verdict command; do
@@ -187,24 +201,63 @@ printf '%s' "$OUT" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.st
 OUT=$(cd "$HOME" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
 [ "$CODE" -eq 2 ] || fail "setup_state: в домашнем каталоге ждали отказ, код $CODE" "$OUT"
 
+# --- check.ci-ran: гейт не требует невозможного -------------------------------
+# Рабочий процесс, который ни разу не запускался, — обещание, а не арбитр. Но
+# локальный bare-репозиторий процессов не запускает, и требовать от него
+# зелёный прогон значило бы повторить ошибку, которую чинили у защиты ветки.
+CI=$(mktemp -d); mkdir -p "$CI/.github/workflows" "$CI/.claude"
+printf 'on: push\njobs:\n  t:\n    steps:\n      - run: ./.claude/check.sh\n' > "$CI/.github/workflows/ci.yml"
+printf 'echo ok\n' > "$CI/.claude/check.sh"
+( cd "$CI" && git init -q && git remote add origin /tmp/whatever.git )
+( cd "$CI" && python3 "$SCRIPTS/setup_state.py" trait remote=true >/dev/null 2>&1 )
+[ "$(verdict "$CI" check.ci-ran)" = "skip" ] \
+  || fail "check.ci-ran: локальный remote процессов не запускает, проба обязана пропускаться" \
+          "$(detail "$CI" check.ci-ran)"
+
+( cd "$CI" && git remote set-url origin https://github.com/x/y.git )
+[ "$(verdict "$CI" check.ci-ran)" = "skip" ] \
+  && fail "check.ci-ran: на хостинге с процессами проба обязана спрашивать" \
+          "$(detail "$CI" check.ci-ran)"
+rm -rf "$CI"
+
+# --- guard-bash: запись по вычисленному пути ---------------------------------
+# Статический разбор вычисленный путь не видит. Дыру нашли на себе: правка
+# защищённого docs/workflow.md через heredoc, где путь собирался как
+# Path(name)/"docs"/"workflow.md", прошла мимо хука.
+GB=$(mktemp -d); mkdir -p "$GB/.claude"
+printf '.env\n!.env.example\ndocs/workflow.md\n+docs/sources/\n' > "$GB/.claude/protected-paths.txt"
+guard() {  # <код python> → OK|BLOCK
+  printf '{"tool_input":{"command":%s},"cwd":"%s"}' \
+    "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$GB" \
+    | bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1
+  [ $? -eq 2 ] && echo BLOCK || echo OK
+}
+[ "$(guard 'python3 - <<PY
+import pathlib
+for n in ("a","b"):
+    (pathlib.Path(n)/"docs"/"workflow.md").write_text("x")
+PY')" = "BLOCK" ] || fail "guard-bash: вычисленный путь к защищённому файлу пропущен" ""
+
+[ "$(guard 'python3 -c "import pathlib; pathlib.Path(\"report.md\").write_text(\"x\")"')" = "OK" ] \
+  || fail "guard-bash: безобидная запись заблокирована" ""
+
+# Чтение защищённого файла без записи блокировать не за что.
+[ "$(guard 'python3 -c "import pathlib; print(pathlib.Path(\"docs/workflow.md\").read_text())"')" = "OK" ] \
+  || fail "guard-bash: чтение защищённого файла принято за запись" ""
+
+# Исключение должно переживать проверку по упоминанию: .env.example не .env.
+[ "$(guard 'python3 - <<PY
+import pathlib
+p = pathlib.Path(".env.example")
+p.write_text("KEY=")
+PY')" = "OK" ] || fail "guard-bash: .env.example заблокирован шаблоном .env" ""
+rm -rf "$GB"
+
 # --- cycle.specs: конвейер фич объявлен полями, а не именем ------------------
 # База конвейер фич не несёт. Проба читает пять полей и обязана краснеть, пока
 # хоть одно не объявлено: имя конвейера гейту ничего не говорит, а прежняя
 # версия этой пробы запускала наш скрипт по нашей форме и отвергала
 # безупречную чужую работу по написанию.
-detail() {  # <корень> <id пробы> → detail пробы
-  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print(next((p.get('detail','') for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
-}
-
-verdict() {  # <корень> <id пробы> → verdict пробы
-  (cd "$1" && python3 "$SCRIPTS/setup_state.py" --json 2>/dev/null) | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print(next((p['verdict'] for s in d['stages'] for p in s['probes'] if p['id']=='$2'), 'НЕТ'))"
-}
 
 CS=$(mktemp -d)
 mkdir -p "$CS/specs" "$CS/.claude"

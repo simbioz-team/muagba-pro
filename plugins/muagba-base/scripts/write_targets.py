@@ -46,6 +46,21 @@ PY_PATH = re.compile(
     r"""(write_text|write_bytes|unlink|touch|rename|replace)\b""")
 PY_OS = re.compile(rf"""\bos\s*\.\s*(remove|unlink)\s*\(\s*{Q}([^"',)\s]+){Q}""")
 
+# Запись, у которой цель — не литерал: `p.write_text(...)`, где `p` собрано в
+# цикле. Разобрать такое статически нельзя и никогда будет нельзя: это не
+# пробел в регулярке, а предел подхода. Поэтому вместо пути выдаётся маркер, а
+# решение принимает вызывающая сторона — она знает список защищённых путей и
+# проверит их по тексту самой команды.
+#
+# Дыру нашли на себе: правка защищённого docs/workflow.md через heredoc, где
+# путь собирался как Path(name)/"docs"/"workflow.md", прошла мимо хука.
+UNRESOLVED = "?"
+PY_WRITE_ANY = re.compile(
+    r"""\.\s*(write_text|write_bytes|writelines|touch|unlink|rename|replace)\s*\("""
+    r"""|\bopen\s*\([^)]*,\s*["']?[wax]"""
+    r"""|\bos\s*\.\s*(replace|rename|remove|unlink|makedirs)\s*\("""
+    r"""|\bshutil\s*\.\s*(copy\w*|move|rmtree)\s*\(""")
+
 
 def segments(command: str) -> list[list[str]]:
     """Команда разбивается на простые по ; && || |."""
@@ -102,6 +117,11 @@ def python_targets(argv: list[str]) -> list[str]:
              if set(m.group(2)) & set("wax+")]
     found += [m.group(1) for m in PY_PATH.finditer(text)]
     found += [m.group(2) for m in PY_OS.finditer(text)]
+    # Запись есть, а цель могла быть вычислена — пусть вызывающая сторона
+    # сверит защищённые пути по тексту команды. Лишний маркер безвреден:
+    # если в тексте ни одного защищённого пути нет, он ничего не запретит.
+    if PY_WRITE_ANY.search(text):
+        found.append(UNRESOLVED)
     return found
 
 
@@ -169,6 +189,10 @@ def main() -> int:
         for t in targets(parts):
             # Обрывки перенаправлений (`&`, `1`, `2`) — не пути. Разбор
             # оболочки регулярками неизбежно оставляет такой мусор.
+            if t == UNRESOLVED:
+                if t not in seen:
+                    seen.append(t)
+                continue
             if not t or re.fullmatch(r"[&|;<>\d]+", t):
                 continue
             if cwd and not t.startswith("/"):

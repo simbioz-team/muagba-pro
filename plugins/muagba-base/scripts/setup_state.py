@@ -933,6 +933,21 @@ def pr_check_ci(c: Ctx) -> V:
                "арбитр обязан гонять ту же команду, иначе они разойдутся")
 
 
+# Хостинг, который умеет запускать рабочие процессы. Локальный bare-репозиторий
+# их не запускает, и требовать от него зелёный прогон — повторить ошибку,
+# которую только что чинили у защиты ветки: гейт, недостижимый для целого
+# класса проектов, закрывают враньём.
+CI_HOST = re.compile(r"github\.com|gitlab\.|bitbucket\.org|dev\.azure\.com|@[\w.-]+:")
+
+
+def ci_possible(c: Ctx) -> bool:
+    if not (c.glob(".github/workflows/*.yml") or c.glob(".github/workflows/*.yaml")
+            or c.exists(".gitlab-ci.yml")):
+        return False
+    code, out = c.git("remote", "-v")
+    return code == 0 and bool(CI_HOST.search(out))
+
+
 def pr_check_ladder(c: Ctx) -> V:
     return c.frames("docs/workflow.md", "Жёсткость гейта")
 
@@ -1497,6 +1512,10 @@ PROBES = [
           fills=("workflow CI", None), run=pr_check_ci),
     Probe("check.ladder", "Э6", "жёсткость гейта выбрана",
           fills=("docs/workflow.md", "Жёсткость гейта"), run=pr_check_ladder),
+    Probe("check.ci-ran", "Э6", "беспристрастный прогон хоть раз состоялся",
+          kind=HUMAN, needs="remote", watch=[".claude/check.sh"],
+          applies=ci_possible,
+          fills=("подтверждение зелёного прогона CI", None)),
     Probe("check.red", "Э6", "проверка краснеет на сломанном", kind=HUMAN,
           watch=[".claude/check.sh"]),
 

@@ -39,6 +39,33 @@ TARGETS=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/write_tar
 if [ -n "$TARGETS" ]; then
   while IFS= read -r target; do
     [ -n "$target" ] || continue
+    # '?' — запись есть, а цель вычисляется в коде и статически не читается.
+    # Ни один разбор её не получит: это предел подхода, а не пробел регулярки.
+    # Поэтому сверяем защищённые пути по тексту самой команды, сняв кавычки:
+    # путь, собранный как Path(x)/"docs"/"workflow.md", иначе не читается как
+    # docs/workflow.md. Нашли на себе — такая правка прошла мимо хука.
+    if [ "$target" = "?" ]; then
+      PATTERNS=$(protected_patterns "$WORK")
+      [ -n "$PATTERNS" ] || continue
+      BARE=$(printf '%s' "$CMD" | tr -d "\"'")
+      # Исключения вырезаем из текста: иначе упоминание .env.example
+      # сработает по шаблону .env.
+      while IFS= read -r pat; do
+        case "$pat" in !*) BARE=${BARE//"${pat#!}"/} ;; esac
+      done <<< "$PATTERNS"
+      while IFS= read -r pat; do
+        [ -n "$pat" ] || continue
+        # Шаблоны '+' пропускаем: там создание разрешено, а цель неизвестна,
+        # и запрет сломал бы штатное заведение файлов.
+        case "$pat" in !*|+*) continue ;; esac
+        case "$BARE" in
+          *"$pat"*)
+            block "запись в защищённый путь '$pat' — цель вычисляется в коде" \
+                  "статический разбор вычисленный путь не видит, поэтому здесь запрет по упоминанию. Правь этот файл инструментом Edit либо вынеси путь в команду явным литералом." ;;
+        esac
+      done <<< "$PATTERNS"
+      continue
+    fi
     case "$target" in /*) abs="$target" ;; *) abs="$WORK/$target" ;; esac
     # Список — у проекта, которому принадлежит цель записи, а не у сессии.
     OWNER=$(owner_dir "$abs") || OWNER="$WORK"
