@@ -303,7 +303,7 @@ rm -rf "$CI"
 # защищённого docs/workflow.md через heredoc, где путь собирался как
 # Path(name)/"docs"/"workflow.md", прошла мимо хука.
 GB=$(mktemp -d); mkdir -p "$GB/.claude"
-printf '.env\n!.env.example\ndocs/workflow.md\n+docs/sources/\n' > "$GB/.claude/protected-paths.txt"
+printf '.env\n!.env.example\n.git/\ndocs/workflow.md\n+docs/sources/\n' > "$GB/.claude/protected-paths.txt"
 guard() {  # <код python> → OK|BLOCK
   printf '{"tool_input":{"command":%s},"cwd":"%s"}' \
     "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$GB" \
@@ -329,7 +329,92 @@ import pathlib
 p = pathlib.Path(".env.example")
 p.write_text("KEY=")
 PY')" = "OK" ] || fail "guard-bash: .env.example заблокирован шаблоном .env" ""
+
+# Шаблон обязан стоять на границе пути, а не просто входить подстрокой.
+# `.env` попадало внутрь `os.environ`, и любой heredoc, читающий переменные
+# окружения, отвергался: исполнители теряли по два прогона, пока не
+# догадывались перейти на Edit. Нашёл сосед, доводивший проект на базе.
+[ "$(guard 'python3 - <<PY
+import os, pathlib
+pathlib.Path("notes.md").write_text(os.environ["API_KEY"])
+PY')" = "OK" ] || fail "guard-bash: os.environ принят за защищённый .env" ""
+
+# Обратная сторона: граница не должна открыть то, что было закрыто. У
+# шаблона, кончающегося слэшем, проверка справа не применяется — иначе
+# '.git/' перестал бы ловить '.git/config'.
+[ "$(guard 'echo x > .git/config')" = "BLOCK" ] \
+  || fail "guard-bash: запись в .git/config прошла" ""
+[ "$(guard 'python3 -c "import os; os.environ.clear()"')" = "OK" ] \
+  || fail "guard-bash: команда без записи заблокирована" ""
 rm -rf "$GB"
+
+# --- rm_targets: что команда удаляет ----------------------------------------
+rmt() { printf '%s' "$1" | python3 "$SCRIPTS/rm_targets.py" | tr '\n' ' '; }
+[ "$(rmt 'rm -rf build dist')" = "build dist " ] \
+  || fail "rm_targets: операнды rm разобраны неверно" "$(rmt 'rm -rf build dist')"
+[ -z "$(rmt 'echo rm -rf /etc')" ] \
+  || fail "rm_targets: упоминание rm принято за удаление" ""
+[ "$(rmt 'cd sub && rm data.db')" = "sub/data.db " ] \
+  || fail "rm_targets: cd в той же команде не учтён" "$(rmt 'cd sub && rm data.db')"
+[ "$(rmt 'rm -- -weird-name')" = "-weird-name " ] \
+  || fail "rm_targets: операнд после -- принят за ключ" "$(rmt 'rm -- -weird-name')"
+
+# --- guard-bash: удаление ----------------------------------------------------
+# Защита путей смотрела только на запись, и `rm docs/constitution.md` проходил
+# насквозь: запрет на правку стоял, а на снос — нет. Отдельно — удаление
+# того, чего нет в гите и что не пересобирается: вернуть неоткуда, поэтому
+# хук не запрещает, а спрашивает человека. Живой случай: агент одной цепочкой
+# `проверил && rm -f` снёс базу с данными заказчика, успев напечатать,
+# сколько в ней записей.
+RMP=$(mktemp -d)
+( cd "$RMP" && git init -q . )
+mkdir -p "$RMP/.claude" "$RMP/docs" "$RMP/node_modules/pkg"
+cp "$SCRIPTS/../../../template/.claude/protected-paths.txt" "$RMP/.claude/"
+printf 'docs/workflow.md\n' >> "$RMP/.claude/protected-paths.txt"
+printf 'study.db\nnode_modules/\n*.log\n' > "$RMP/.gitignore"
+: > "$RMP/docs/workflow.md"; : > "$RMP/.env"; : > "$RMP/.env.example"
+: > "$RMP/docs/tracked.md"; : > "$RMP/node_modules/pkg/index.js"; : > "$RMP/run.log"
+echo data > "$RMP/study.db"
+( cd "$RMP" && git add -A >/dev/null 2>&1 \
+  && git -c user.email=t@t -c user.name=t commit -qm init >/dev/null 2>&1 )
+
+gbv() {  # <команда> → OK|BLOCK|ASK
+  local out code
+  out=$(printf '{"tool_input":{"command":%s},"cwd":"%s"}' \
+    "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$RMP" \
+    | bash "$SCRIPTS/guard-bash.sh" 2>/dev/null); code=$?
+  if [ "$code" -eq 2 ]; then echo BLOCK
+  elif printf '%s' "$out" | grep -q '"permissionDecision": *"ask"'; then echo ASK
+  else echo OK; fi
+}
+while IFS=$'\t' read -r want command; do
+  [ -z "${want:-}" ] && continue
+  got=$(gbv "$command")
+  [ "$got" = "$want" ] || fail "guard-bash удаление: ждали $want, вышло $got" "$command"
+done <<'CASES'
+BLOCK	rm docs/workflow.md
+BLOCK	rm -f .env
+OK	rm .env.example
+OK	rm docs/tracked.md
+ASK	rm -f study.db
+OK	rm -rf node_modules
+OK	rm -f run.log
+OK	rm -f нет-такого-файла.db
+BLOCK	rm -f study.db && git reset --hard
+CASES
+
+# Вопрос уходит в Claude Code структурой, а не текстом: сломанный JSON
+# хук превращает в no-op, и защита остаётся только на бумаге.
+printf '{"tool_input":{"command":"rm -f study.db"},"cwd":"%s"}' "$RMP" \
+  | bash "$SCRIPTS/guard-bash.sh" 2>/dev/null \
+  | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["hookSpecificOutput"]
+assert d["hookEventName"] == "PreToolUse", d
+assert d["permissionDecision"] == "ask", d
+assert d["permissionDecisionReason"].strip(), d
+' || fail "guard-bash: вопрос о невосстановимом удалении отдан не по схеме хука" ""
+rm -rf "$RMP"
 
 # --- cycle.specs: конвейер фич объявлен полями, а не именем ------------------
 # База конвейер фич не несёт. Проба читает пять полей и обязана краснеть, пока

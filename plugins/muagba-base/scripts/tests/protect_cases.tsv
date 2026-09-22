@@ -14,3 +14,6 @@ ALLOW	exists	docs/tech-stack.md
 ALLOW	new	docs/structure.md
 ALLOW	new	.env.example
 ALLOW	exists	.env.example
+ALLOW	exists	.environment/notes.md
+ALLOW	exists	src/environment.ts
+BLOCK	exists	.env.local

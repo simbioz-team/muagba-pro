@@ -37,7 +37,7 @@ fi
 # точечно это не разрулить, формат подстроки слишком груб.
 for p in "${PATTERNS[@]}"; do
   case "$p" in
-    !*) if [[ "$FILE_PATH" == *"${p#!}"* ]]; then exit 0; fi ;;
+    !*) if mentions "$FILE_PATH" "${p#!}"; then exit 0; fi ;;
   esac
 done
 
@@ -48,7 +48,9 @@ for p in "${PATTERNS[@]}"; do
     +*) WRITE_ONCE=1; p="${p#+}" ;;
   esac
   [ -z "$p" ] && continue
-  [[ "$FILE_PATH" == *"$p"* ]] || continue
+  # Не просто подстрока: шаблон обязан стоять на границе, иначе `.env`
+  # накрывает `.environment/` и `os.environ`. См. mentions в _common.sh.
+  mentions "$FILE_PATH" "$p" || continue
 
   if [ "$WRITE_ONCE" -eq 1 ]; then
     # Файла ещё нет — это создание, оно разрешено.

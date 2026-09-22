@@ -68,3 +68,29 @@ protected_patterns() {
     [ -n "$line" ] && printf '%s\n' "$line"
   done < "$list"
 }
+
+# mentions <текст> <шаблон> — встречается ли шаблон как путь, а не как кусок
+# чужого слова. Простой поиск подстроки ловил `os.environ` шаблоном `.env` и
+# отвергал любой heredoc, читающий переменные окружения: исполнители теряли
+# по два прогона, пока не догадывались перейти на Edit. Совпадение считается,
+# только если слева не буква-цифра-подчёркивание, а справа — то же самое, но
+# лишь когда шаблон кончается словарным символом: у `.git/` граница уже стоит
+# своим слэшем, и проверка справа запретила бы `.git/config`.
+mentions() {
+  local rest="$1" pat="$2" before pre post post_matters
+  [ -n "$pat" ] || return 1
+  case "${pat: -1}" in
+    [A-Za-z0-9_]) post_matters=1 ;;
+    *) post_matters=0 ;;
+  esac
+  while [[ "$rest" == *"$pat"* ]]; do
+    before="${rest%%"$pat"*}"
+    pre="${before: -1}"
+    rest="${rest#*"$pat"}"
+    post="${rest:0:1}"
+    [[ "$pre" =~ [A-Za-z0-9_] ]] && continue
+    [ "$post_matters" -eq 1 ] && [[ "$post" =~ [A-Za-z0-9_] ]] && continue
+    return 0
+  done
+  return 1
+}
