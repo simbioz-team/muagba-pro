@@ -250,6 +250,33 @@ printf 'Текст glossary.\nНовый термин.\n' > "$PA/docs/product/gl
 printf 'Переписанный замысел.\n' > "$PA/docs/product/mission.md"
 [ "$(verdict "$PA" product.audit)" = "ok" ] \
   && fail "product.audit: правка замысла обязана ронять подтверждение" "$(detail "$PA" product.audit)"
+
+# Подпись, сделанная ДО сужения списка, несёт лишний файл. Сверка по
+# объединению старого и нового списков числила снятый файл изменённым
+# навсегда: сужение не действовало, пока не переподпишут.
+printf 'Текст mission.\n' > "$PA/docs/product/mission.md"
+( cd "$PA" && python3 "$SCRIPTS/setup_state.py" confirm product.audit --note t >/dev/null 2>&1 )
+python3 - "$PA" <<'EOPY'
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1]) / ".claude" / "setup.json"
+d = json.loads(p.read_text(encoding="utf-8"))
+d["confirmed"]["product.audit"]["fingerprint"]["docs/product/glossary.md"] = "deadbeef"
+p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+EOPY
+[ "$(verdict "$PA" product.audit)" = "ok" ] \
+  || fail "product.audit: файл, снятый из наблюдения, числится изменённым" "$(detail "$PA" product.audit)"
+
+# А файл, попавший в наблюдение после подписи, обязан ронять: под ним
+# человек не подписывался.
+python3 - "$PA" <<'EOPY'
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1]) / ".claude" / "setup.json"
+d = json.loads(p.read_text(encoding="utf-8"))
+d["confirmed"]["product.audit"]["fingerprint"].pop("docs/product/roadmap.md", None)
+p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+EOPY
+[ "$(verdict "$PA" product.audit)" = "ok" ] \
+  && fail "product.audit: неподписанный файл в наблюдении принят за подтверждённый" "$(detail "$PA" product.audit)"
 rm -rf "$PA"
 
 # --- check.ci-ran: гейт не требует невозможного -------------------------------

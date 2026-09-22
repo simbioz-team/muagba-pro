@@ -1701,8 +1701,15 @@ def check_confirmation(probe: Probe, ctx: Ctx, state: State) -> V:
                  f"выполни и подтверди: setup_state.py confirm {probe.id}")
     now = fingerprint(ctx, probe.watch)
     was = rec.get("fingerprint") or {}
-    if was != now:
-        changed = [k for k in set(was) | set(now) if was.get(k) != now.get(k)]
+    # Сверяем по нынешнему списку наблюдаемых, а не по объединению с
+    # записанным. Иначе файл, снятый из наблюдения, числится изменённым
+    # навсегда: сужение списка не действует, пока не переподпишут. Так и
+    # вышло, когда словарь убрали из watch у product.*.
+    #
+    # Файл, попавший в наблюдение уже после подписи, считается изменённым —
+    # под ним человек не подписывался, и это безопасная сторона ошибки.
+    changed = [k for k in now if k not in was or was[k] != now[k]]
+    if changed:
         return V(FAIL,
                  f"подтверждение от {rec.get('at', '?')} устарело: изменилось "
                  + ", ".join(sorted(changed)),
