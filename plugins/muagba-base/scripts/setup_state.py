@@ -465,6 +465,9 @@ def pr_entry_sources(c: Ctx) -> V:
 # Э2 ------------------------------------------------------------------------
 PRODUCT_DOCS = ["docs/product/mission.md", "docs/product/roadmap.md",
                 "docs/product/glossary.md"]
+# Документы замысла: их человек подтверждает как свой текст. Словарь сюда не
+# входит — он живой справочник, а не заявление о намерении.
+PRODUCT_INTENT = PRODUCT_DOCS[:2]
 
 
 def pr_product_docs(c: Ctx) -> V:
@@ -885,6 +888,38 @@ def yaml_run_commands(text: str) -> str:
     return "\n".join(out)
 
 
+def ci_unrestricted(text: str) -> bool:
+    """Есть ли триггер, который не ограничен ветками.
+
+    `pull_request:` без `branches:` запускает сборку с любой ветки — значит
+    арбитр работает, как бы ни называлась текущая. Каркас несёт ровно такой
+    `ci.yml`, и проба ругалась на файл, который база сама и кладёт: девять
+    зелёных прогонов по PR, а гейт красный на всех девяти ветках.
+    """
+    m = re.search(r"^on:[ \t]*(.*)$", text, re.M)
+    if not m:
+        return False
+    tail = m.group(1).split("#")[0].strip()
+    if tail:
+        return True                      # `on: push` либо `on: [push, pull_request]`
+    body = text[m.end():]
+    nxt = re.search(r"^\S", body, re.M)
+    if nxt:
+        body = body[: nxt.start()]
+    lines = [l for l in body.splitlines() if l.strip() and not l.strip().startswith("#")]
+    if not lines:
+        return False
+    indent = min(len(l) - len(l.lstrip()) for l in lines)
+    blocks: list[list[str]] = []
+    for l in lines:
+        head = len(l) - len(l.lstrip()) == indent and re.match(r"^\s*-?\s*[\w-]+:?\s*$", l)
+        if head:
+            blocks.append([l])
+        elif blocks:
+            blocks[-1].append(l)
+    return any(not any("branches" in x for x in b[1:]) for b in blocks)
+
+
 def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
     """Арбитр, который слушает не ту ветку, не арбитр.
 
@@ -899,6 +934,8 @@ def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
                    for l in m.group(1).splitlines() if l.strip()}
     if not listed or any("*" in b for b in listed):
         return ok(name)
+    if ci_unrestricted(text):
+        return ok(f"{name}: есть триггер без ограничения по веткам")
     rc, branch = c.git("rev-parse", "--abbrev-ref", "HEAD")
     if rc != 0 or not branch or branch == "HEAD":
         # На ветке без коммитов rev-parse молчит, а имя уже есть — и именно
@@ -1333,6 +1370,18 @@ def pr_cycle_rollback(c: Ctx) -> V:
 
 
 # Э10 -----------------------------------------------------------------------
+def main_checkout(c: Ctx) -> Path | None:
+    """Основной checkout, если мы в рабочем дереве. Иначе None."""
+    rc1, common = c.git("rev-parse", "--git-common-dir")
+    rc2, gitdir = c.git("rev-parse", "--git-dir")
+    if rc1 or rc2 or not common or common.strip() == gitdir.strip():
+        return None
+    q = Path(common.strip())
+    if not q.is_absolute():
+        q = (c.root / common.strip()).resolve()
+    return q.parent
+
+
 def pr_observe_log(c: Ctx) -> V:
     p = c.p(".claude/logs/agents.jsonl")
     if p.exists() and p.stat().st_size > 0:
@@ -1348,6 +1397,15 @@ def pr_observe_log(c: Ctx) -> V:
         q = Path(sess) / ".claude" / "logs" / "agents.jsonl"
         if q.resolve() != p.resolve() and q.exists() and q.stat().st_size > 0:
             return ok(f"журнал ведётся в каталоге сессии: {q}")
+    # Пробы гоняют и в рабочем дереве — например, чтобы понять, что там
+    # покраснело. `.claude/logs/` в игноре и в дерево не копируется, поэтому
+    # журнала там нет никогда. Спрашиваем основной checkout: журнал ведётся
+    # в проекте сессии, а дерево — лишь её временный checkout.
+    main = main_checkout(c)
+    if main:
+        q = main / ".claude" / "logs" / "agents.jsonl"
+        if q.exists() and q.stat().st_size > 0:
+            return ok(f"журнал в основном checkout: {q}")
     return bad("журнал агентов пуст",
                "он непуст только если агенты уже работали — закроется на Э11")
 
@@ -1450,10 +1508,15 @@ PROBES = [
           fills=(M, "Чего продукт НЕ делает"), run=pr_product_antigoals),
     Probe("product.glossary", "Э2", "словарь не пуст",
           fills=("docs/product/glossary.md", "таблица терминов"), run=pr_product_glossary),
+    # Словарь намеренно вне watch: он пополняется на каждой фиче — термины и
+    # ключи ответов заводят раньше кода. Держать его здесь значит протухать
+    # подтверждение «это мой текст» восемь раз за восемь фич, а подтверждение,
+    # которое переспрашивают без повода, начинают закрывать не глядя.
+    # Качество самого словаря держит product.glossary и аудит документации.
     Probe("product.audit", "Э2", "заполнено осмысленно", kind=HUMAN,
-          watch=PRODUCT_DOCS),
+          watch=PRODUCT_INTENT),
     Probe("product.owned", "Э2", "документ свой, а не конспект чужого", kind=HUMAN,
-          watch=PRODUCT_DOCS, applies=lambda c: any(
+          watch=PRODUCT_INTENT, applies=lambda c: any(
               re.search(r"^sources:\s*\S", c.read(d) or "", re.M) for d in PRODUCT_DOCS)),
 
     Probe("const.exists", "Э3", "конституция заведена", run=pr_const_exists),

@@ -201,6 +201,57 @@ printf '%s' "$OUT" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.st
 OUT=$(cd "$HOME" && python3 "$SCRIPTS/setup_state.py" --json 2>&1); CODE=$?
 [ "$CODE" -eq 2 ] || fail "setup_state: в домашнем каталоге ждали отказ, код $CODE" "$OUT"
 
+# --- check.ci: PR-триггер запускает сборку с любой ветки ---------------------
+# Каркас несёт ci.yml с `push: branches: [main]` и голым `pull_request:`.
+# Проба смотрела только push.branches и краснела на каждой ветке фичи — то
+# есть ругалась на файл, который база сама и кладёт.
+CB=$(mktemp -d); mkdir -p "$CB/.github/workflows" "$CB/.claude"
+cp "$HERE/../../../../template/.github/workflows/ci.yml" "$CB/.github/workflows/ci.yml" 2>/dev/null \
+  || printf 'on:\n  push:\n    branches: [main]\n  pull_request:\n\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' > "$CB/.github/workflows/ci.yml"
+printf 'echo ok\n' > "$CB/.claude/check.sh"
+( cd "$CB" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm x \
+  && git checkout -qb feat/008-something )
+[ "$(verdict "$CB" check.ci)" = "ok" ] \
+  || fail "check.ci: PR-триггер без ограничения по веткам не признан" "$(detail "$CB" check.ci)"
+
+# А вот когда ограничены оба триггера — красная по делу.
+printf 'on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' \
+  > "$CB/.github/workflows/ci.yml"
+[ "$(verdict "$CB" check.ci)" = "fail" ] \
+  || fail "check.ci: оба триггера слушают main, а работа в feat/ — должна краснеть" "$(detail "$CB" check.ci)"
+rm -rf "$CB"
+
+# --- observe.log: пробы гоняют и в рабочем дереве ----------------------------
+# .claude/logs/ в игноре и в дерево не копируется, поэтому журнала там нет
+# никогда. Журнал ведётся в проекте сессии, дерево — её временный checkout.
+WT=$(mktemp -d); mkdir -p "$WT/main/.claude/logs"
+( cd "$WT/main" && git init -q && printf 'x\n' > a.txt && git add -A \
+  && git -c user.email=t@t -c user.name=t commit -qm x \
+  && git worktree add -q ../tree -b wt 2>/dev/null )
+printf '{"a":1}\n' > "$WT/main/.claude/logs/agents.jsonl"
+if [ -d "$WT/tree" ]; then
+  [ "$(verdict "$WT/tree" observe.log)" = "ok" ] \
+    || fail "observe.log: в рабочем дереве не найден журнал основного checkout" \
+            "$(detail "$WT/tree" observe.log)"
+fi
+rm -rf "$WT"
+
+# --- product.audit не протухает от пополнения словаря ------------------------
+# Словарь пополняют агенты на каждой фиче. Держать его в watch значит
+# переспрашивать «это мой текст» восемь раз за восемь фич.
+PA=$(mktemp -d); mkdir -p "$PA/docs/product"
+for f in mission roadmap glossary; do printf 'Текст %s.\n' "$f" > "$PA/docs/product/$f.md"; done
+( cd "$PA" && python3 "$SCRIPTS/setup_state.py" confirm product.audit --note t >/dev/null 2>&1 )
+[ "$(verdict "$PA" product.audit)" = "ok" ] \
+  || fail "product.audit: подтверждение не записалось" "$(detail "$PA" product.audit)"
+printf 'Текст glossary.\nНовый термин.\n' > "$PA/docs/product/glossary.md"
+[ "$(verdict "$PA" product.audit)" = "ok" ] \
+  || fail "product.audit: протухло от правки словаря" "$(detail "$PA" product.audit)"
+printf 'Переписанный замысел.\n' > "$PA/docs/product/mission.md"
+[ "$(verdict "$PA" product.audit)" = "ok" ] \
+  && fail "product.audit: правка замысла обязана ронять подтверждение" "$(detail "$PA" product.audit)"
+rm -rf "$PA"
+
 # --- check.ci-ran: гейт не требует невозможного -------------------------------
 # Рабочий процесс, который ни разу не запускался, — обещание, а не арбитр. Но
 # локальный bare-репозиторий процессов не запускает, и требовать от него
