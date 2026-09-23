@@ -543,6 +543,42 @@ printf '# Конституция\n\n## Core Principles\n\n### I. Раз\nТел�
   || fail "const.exists: конституция в .specify/memory не найдена" "$(cd "$CP" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
 rm -rf "$CP"
 
+# --- enforce.attribution: подпись агента — решение человека -----------------
+# Умолчание Claude Code — подписываться. Проба ловит отсутствие решения, а не
+# сам ответ: «подписывать» и «не подписывать» оба законны.
+AT=$(mktemp -d); mkdir -p "$AT/.claude"; git -C "$AT" init -q
+echo '{"permissions":{"deny":["Bash(x)"]}}' > "$AT/.claude/settings.json"
+detail "$AT" enforce.attribution | grep -q 'не решено' \
+  || fail "enforce.attribution: молчание принято за решение" "$(detail "$AT" enforce.attribution)"
+echo '{"attribution":{"commit":"","pr":""}}' > "$AT/.claude/settings.json"
+detail "$AT" enforce.attribution | grep -q 'не подписывается' \
+  || fail "enforce.attribution: отказ от подписи не распознан" "$(detail "$AT" enforce.attribution)"
+echo '{"attribution":{"commit":"Co-Authored-By: X <x@y>","pr":"by X"}}' > "$AT/.claude/settings.json"
+detail "$AT" enforce.attribution | grep -q 'задана явно' \
+  || fail "enforce.attribution: явная подпись не засчитана" "$(detail "$AT" enforce.attribution)"
+# Половина решения — не решение: pr остался на умолчании.
+echo '{"attribution":{"commit":""}}' > "$AT/.claude/settings.json"
+# Проверяем причину, а не вердикт: упавшая с исключением проба тоже «fail».
+detail "$AT" enforce.attribution | grep -q 'не решено' \
+  || fail "enforce.attribution: решение только про коммиты засчитано целиком" "$(detail "$AT" enforce.attribution)"
+# Личное решение живёт в settings.local.json — оно тоже решение.
+echo '{}' > "$AT/.claude/settings.json"
+echo '{"attribution":{"commit":"","pr":""}}' > "$AT/.claude/settings.local.json"
+detail "$AT" enforce.attribution | grep -q 'settings.local.json' \
+  || fail "enforce.attribution: личное решение не найдено" "$(detail "$AT" enforce.attribution)"
+rm -rf "$AT"
+
+# --- cycle.release: порядок выпуска ------------------------------------------
+# Слот каркаса — красный; «релизов нет» с причиной — законный ответ.
+RR=$(mktemp -d); mkdir -p "$RR/.claude" "$RR/docs"; git -C "$RR" init -q
+cp "$SCRIPTS/../../../template/docs/workflow.md" "$RR/docs/workflow.md"
+detail "$RR" cycle.release | grep -q 'не заполнен' \
+  || fail "cycle.release: слот каркаса принят за ответ" "$(detail "$RR" cycle.release)"
+printf '# Цикл\n\n## Релизы\n\nРелизов нет: сервис разворачивается при мерже в main.\n' > "$RR/docs/workflow.md"
+[ "$(verdict "$RR" cycle.release)" = "ok" ] \
+  || fail "cycle.release: «релизов нет» с причиной отвергнут" "$(detail "$RR" cycle.release)"
+rm -rf "$RR"
+
 # --- journal_watch: журнал сессии через сжатие контекста ---------------------
 # Агент сам /compact не вызывает — сжимает Claude Code. Хук напоминает
 # записать журнал заранее, сохраняет выжимку сжатия и возвращает журнал после.

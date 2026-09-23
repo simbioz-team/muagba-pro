@@ -997,6 +997,29 @@ def pr_enforce_permissions(c: Ctx) -> V:
     return bad("список deny пуст", ".claude/settings.json → permissions.deny")
 
 
+def pr_enforce_attribution(c: Ctx) -> V:
+    """Подписывается ли агент соавтором — решено явно, а не по умолчанию.
+
+    Claude Code по умолчанию ставит `Co-Authored-By` в коммит и строку в PR.
+    Многие этого не хотят, и узнают о подписи, когда она уже в истории.
+    Ответ «да, подписывать» законен — проба ловит только отсутствие решения.
+    Решение бывает проектным (`settings.json`) и личным (`settings.local.json`).
+    """
+    for rel in (".claude/settings.json", ".claude/settings.local.json"):
+        cfg = c.json(rel) or {}
+        attr = cfg.get("attribution")
+        if isinstance(attr, dict) and isinstance(attr.get("commit"), str) \
+                and isinstance(attr.get("pr"), str):
+            off = attr["commit"] == "" and attr["pr"] == ""
+            return ok(f"{rel}: " + ("агент соавтором не подписывается" if off
+                                    else "подпись агента задана явно"))
+        if isinstance(cfg.get("includeCoAuthoredBy"), bool):
+            return ok(f"{rel}: includeCoAuthoredBy (устаревший ключ; новый — attribution)")
+    return bad("не решено, подписывается ли агент соавтором",
+               ".claude/settings.json → attribution: {\"commit\": \"\", \"pr\": \"\"} — "
+               "спросить человека; личное решение — в settings.local.json")
+
+
 def protected_patterns_of(c: Ctx) -> list[str]:
     """Действующие запреты. Исключения (`!`) сюда не попадают: это разрешение."""
     return [p.lstrip("+") for p in protected_patterns(c) if not p.startswith("!")]
@@ -1369,6 +1392,11 @@ def pr_cycle_rollback(c: Ctx) -> V:
     return c.frames("docs/workflow.md", "Откат")
 
 
+def pr_cycle_release(c: Ctx) -> V:
+    """Как выходит версия. «Релизов нет» — законный ответ, если назван."""
+    return c.frames("docs/workflow.md", "Релизы")
+
+
 # Э10 -----------------------------------------------------------------------
 def main_checkout(c: Ctx) -> Path | None:
     """Основной checkout, если мы в рабочем дереве. Иначе None."""
@@ -1588,6 +1616,8 @@ PROBES = [
           fills=(".claude/protected-paths.txt", None), run=pr_enforce_protected),
     Probe("enforce.invariants", "Э7", "критичное переживёт компакцию",
           fills=(".claude/invariants.md", None), run=pr_enforce_invariants),
+    Probe("enforce.attribution", "Э7", "соавторство агента решено явно",
+          fills=(".claude/settings.json", "attribution"), run=pr_enforce_attribution),
     Probe("enforce.paths-work", "Э7", "запрет на правку срабатывает", run=pr_enforce_paths_work),
     Probe("enforce.bash-works", "Э7", "запрет на команду срабатывает", run=pr_enforce_bash_works),
     Probe("enforce.gate-works", "Э7", "красная проверка держит ход", run=pr_enforce_gate_works),
@@ -1617,6 +1647,8 @@ PROBES = [
           fills=("docs/workflow.md", "Ветки и мерж"), run=pr_cycle_branching),
     Probe("cycle.rollback", "Э9", "порядок отката записан",
           fills=("docs/workflow.md", "Откат"), run=pr_cycle_rollback),
+    Probe("cycle.release", "Э9", "порядок выпуска записан",
+          fills=("docs/workflow.md", "Релизы"), run=pr_cycle_release),
 
     Probe("observe.log", "Э10", "видно, кто что делал",
           fills=("формат .claude/logs/agents.jsonl", None), run=pr_observe_log),

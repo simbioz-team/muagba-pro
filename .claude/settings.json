@@ -1,4 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "claudeMdExcludes": [
     "**/template/CLAUDE.md",
     "**/template/AGENTS.md",
