@@ -148,7 +148,10 @@ claude plugin update muagba-base@muagba-pro
 | `PreToolUse` (Edit/Write) | `protect-paths.sh` | Блокирует правку путей из `.claude/protected-paths.txt`; шаблон с префиксом `+` разрешает создать файл и запрещает изменить созданный |
 | `PreToolUse` (Bash) | `guard-bash.sh` | Блокирует `rm -rf /`, force-push, `reset --hard`, `clean -fd`, `chmod 777`, а также запись в защищённый путь через оболочку: перенаправление, `tee`, `sed -i`, `cp/mv`, `dd`, запись из `python3 -c` и heredoc'а. Туда же удаление: `rm` защищённого пути запрещён, `rm` файла, которого нет в гите и который не пересобирается, — спрашивает человека. Относительные цели достраивает от пройденного в той же команде `cd` |
 | `Stop` | `gate-check.sh` | Не даёт закрыть ход, пока `.claude/check.sh` красный |
+| `PostToolUse` | `journal_watch.py tick` | Контекст вырос на `MUAGBA_JOURNAL_EVERY` токенов (150 000) с последней записи `docs/journal/` — напоминает агенту обновить журнал сессии. Сабагентам не напоминает |
+| `PostCompact` | `journal_watch.py postcompact` | Сохраняет выжимку сжатия в `docs/journal/raw/` |
 | `SessionStart` (compact) | `reinject-invariants.sh` | Возвращает `.claude/invariants.md` в контекст после компакции |
+| `SessionStart` (compact) | `journal_watch.py reinject` | Называет последнюю запись журнала и велит перечитать её и продолжить |
 | `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` **проекта сессии** |
 
 Защита путей определяет проект **по самому файлу**, а не по каталогу сессии:

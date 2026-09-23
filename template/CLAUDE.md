@@ -26,4 +26,6 @@ Claude Code.
 - `.claude/settings.json` — права и хуки
 - `.claude/protected-paths.txt` — что нельзя править
 - `.claude/invariants.md` — что возвращается в контекст после компакции
+- `docs/journal/` — журнал сессии: хук напоминает его вести и возвращает
+  после компакции
 - `.claude/check.sh` — гейт завершения хода

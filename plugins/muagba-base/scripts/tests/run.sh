@@ -543,6 +543,56 @@ printf '# Конституция\n\n## Core Principles\n\n### I. Раз\nТел�
   || fail "const.exists: конституция в .specify/memory не найдена" "$(cd "$CP" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
 rm -rf "$CP"
 
+# --- journal_watch: журнал сессии через сжатие контекста ---------------------
+# Агент сам /compact не вызывает — сжимает Claude Code. Хук напоминает
+# записать журнал заранее, сохраняет выжимку сжатия и возвращает журнал после.
+JW=$(mktemp -d); mkdir -p "$JW/p" "$JW/s"
+jw_usage() {  # <токены> → transcript с одним ответом модели такого размера
+  printf '{"type":"assistant","message":{"usage":{"input_tokens":1,"cache_read_input_tokens":%d,"cache_creation_input_tokens":0}}}\n' \
+    "$(( $1 - 1 ))" > "$JW/t.jsonl"
+}
+jw() {  # <режим> [лишние поля JSON] → stdout хука
+  printf '{"session_id":"s1","cwd":"%s","transcript_path":"%s","scratchpad_dir":"%s"%s}' \
+    "$JW/p" "$JW/t.jsonl" "$JW/s" "${2:-}" \
+    | MUAGBA_JOURNAL_EVERY=100000 python3 "$SCRIPTS/journal_watch.py" "$1"
+}
+# Нет docs/journal/ — хук молчит при любом росте.
+jw_usage 50000; jw tick >/dev/null; jw_usage 900000
+[ -z "$(jw tick)" ] || fail "journal_watch: говорит в проекте без docs/journal/" ""
+[ -z "$(jw reinject)" ] || fail "journal_watch: reinject в проекте без docs/journal/" ""
+rm -f "$JW/s/"*
+
+mkdir -p "$JW/p/docs/journal"; echo x > "$JW/p/docs/journal/2026-01-01.md"
+jw_usage 50000; [ -z "$(jw tick)" ] || fail "journal_watch: напомнил на первом вызове" ""
+jw_usage 120000; [ -z "$(jw tick)" ] || fail "journal_watch: напомнил до порога" "рост 70K при пороге 100K"
+jw_usage 160000
+jw tick | grep -q '"additionalContext".*docs/journal/2026-01-01.md' \
+  || fail "journal_watch: не напомнил за порогом" "$(jw_usage 160000; jw tick)"
+jw_usage 165000; [ -z "$(jw tick)" ] || fail "journal_watch: напоминает на каждый вызов" ""
+jw_usage 190000; jw tick | grep -q additionalContext \
+  || fail "journal_watch: проигнорированное напоминание не повторено" ""
+# Журнал записан — отсчёт заново: следующий рост меряется от этой точки.
+touch -d '+1 min' "$JW/p/docs/journal/2026-01-01.md"
+jw_usage 200000; [ -z "$(jw tick)" ] || fail "journal_watch: запись журнала не сбросила отсчёт" ""
+jw_usage 280000; [ -z "$(jw tick)" ] || fail "journal_watch: отсчёт не от записи журнала" "рост 80K"
+# Сжатие: контекст упал ниже отметки — отсчёт от нового размера.
+jw_usage 40000; jw tick >/dev/null
+jw_usage 130000; [ -z "$(jw tick)" ] || fail "journal_watch: сжатие не сбросило отсчёт" "рост 90K"
+# И обратная сторона: без сброса отметка осталась бы на 200K, и рост от
+# сжатого контекста не замечался бы, пока не перерастёт старую отметку.
+jw_usage 150000; jw tick | grep -q additionalContext \
+  || fail "journal_watch: рост после сжатия меряется от старой отметки" "рост 110K от 40K"
+# Сабагент журнал сессии не ведёт.
+jw_usage 900000
+[ -z "$(jw tick ',"agent_id":"a1"')" ] || fail "journal_watch: напомнил сабагенту" ""
+
+jw postcompact ',"trigger":"auto","compact_summary":"ВЫЖИМКА-42"'
+grep -rqs 'ВЫЖИМКА-42' "$JW/p/docs/journal/raw/" \
+  || fail "journal_watch: выжимка сжатия не сохранена" "$(ls -R "$JW/p/docs/journal")"
+jw reinject | grep -q 'docs/journal/2026-01-01.md' \
+  || fail "journal_watch: после сжатия не назван журнал" "$(jw reinject)"
+rm -rf "$JW"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"
