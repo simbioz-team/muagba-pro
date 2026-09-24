@@ -9,7 +9,11 @@ read_hook_input
 CMD=$(jq_get tool_input.command)
 [ -z "$CMD" ] && exit 0
 
+# Класс решения для журнала — выставляется перед каждым block/ask_now.
+CLASS="danger"
+TARGET=""
 block() {
+  log_event guard hook=guard-bash decision=deny class="$CLASS" target="$TARGET"
   cat >&2 <<MSG
 Запрещено: $1
 Команда: $CMD
@@ -24,6 +28,7 @@ MSG
 ASK=""
 ask_later() { [ -n "$ASK" ] || ASK="$1"; }
 ask_now() {
+  log_event guard hook=guard-bash decision=ask class=delete-unrecoverable
   python3 -c '
 import json, sys
 print(json.dumps({"hookSpecificOutput": {
@@ -40,6 +45,7 @@ print(json.dumps({"hookSpecificOutput": {
 # а не результат сборки.
 RM_TARGET=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/rm_danger.py" 2>/dev/null)
 if [ -n "$RM_TARGET" ]; then
+  CLASS=rm-recursive; TARGET="$RM_TARGET"
   block "рекурсивное удаление '$RM_TARGET'" \
         "это корень, домашний каталог или каталог первого уровня. Укажи путь внутри проекта."
 fi
@@ -105,6 +111,7 @@ if [ -n "$TARGETS" ]; then
         # и запрет сломал бы штатное заведение файлов.
         case "$pat" in !*|+*) continue ;; esac
         if mentions "$BARE" "$pat"; then
+          CLASS=write-protected-computed; TARGET="$pat"
           block "запись в защищённый путь '$pat' — цель вычисляется в коде" \
                 "статический разбор вычисленный путь не видит, поэтому здесь запрет по упоминанию. Правь этот файл инструментом Edit либо вынеси путь в команду явным литералом."
         fi
@@ -113,6 +120,7 @@ if [ -n "$TARGETS" ]; then
     fi
     abs=$(abs_path "$target")
     if pat=$(protected_pattern_for "$abs"); then
+      CLASS=write-protected; TARGET="$pat"
       block "запись в защищённый путь '$target'" \
             "этот файл правит человек. Шаблон '$pat' из .claude/protected-paths.txt."
     fi
@@ -155,6 +163,7 @@ if [ -n "$DELETES" ]; then
     [ -n "$target" ] || continue
     abs=$(abs_path "$target")
     if pat=$(protected_pattern_for "$abs"); then
+      CLASS=delete-protected; TARGET="$pat"
       block "удаление защищённого пути '$target'" \
             "этот файл правит человек, а удаление — самая необратимая из правок. Шаблон '$pat' из .claude/protected-paths.txt."
     fi
@@ -172,6 +181,7 @@ fi
 # наравне с самим сбросом, и даже процитировать совет было нельзя.
 DANGER=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/cmd_danger.py" 2>/dev/null)
 if [ -n "$DANGER" ]; then
+  CLASS=danger; TARGET=$(printf '%s' "$DANGER" | sed -n 1p)
   block "$(printf '%s' "$DANGER" | sed -n 1p)" "$(printf '%s' "$DANGER" | sed -n 2p)"
 fi
 

@@ -94,3 +94,37 @@ mentions() {
   done
   return 1
 }
+
+# log_event <event> [ключ=значение ...] — строка в журнал агентов.
+# Журнал тот же, что у log-agent.sh, и по той же причине в проекте сессии.
+# Пишем, только если проект уже завёл .claude/logs/: на неподготовленном
+# проекте хук не создаёт каталогов — база ставится без подготовки.
+# Полный текст команды в журнал не попадает: только класс и шаблон пути.
+log_event() {
+  local dir
+  dir="$(project_dir)/.claude/logs"
+  [ -d "$dir" ] || return 0
+  local branch
+  # symbolic-ref знает имя и на ветке без коммитов, где rev-parse отдаёт
+  # «HEAD»; отделённый HEAD — короткий хэш.
+  branch=$(git -C "$(work_dir)" symbolic-ref --short -q HEAD 2>/dev/null \
+    || git -C "$(work_dir)" rev-parse --short HEAD 2>/dev/null)
+  printf '%s' "$HOOK_INPUT" | python3 -c '
+import json, sys, datetime
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+rec = {"ts": datetime.datetime.now().isoformat(timespec="seconds"),
+       "event": sys.argv[1],
+       "session_id": d.get("session_id"),
+       "agent_type": d.get("agent_type") or None,
+       "cwd": d.get("cwd"),
+       "branch": sys.argv[2] or None}
+for kv in sys.argv[3:]:
+    k, _, v = kv.partition("=")
+    rec[k] = v[:200]
+print(json.dumps(rec, ensure_ascii=False))
+' "$1" "$branch" "${@:2}" >> "$dir/agents.jsonl" 2>/dev/null
+  return 0
+}

@@ -6,6 +6,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS="$(dirname "$HERE")"
 FAILED=0
 
+# Хуки пишут журнал в проект сессии, а без CLAUDE_PROJECT_DIR им становится
+# текущий каталог — корень базы, где .claude/logs/ заведён. Прогон писал бы в
+# настоящий журнал. По умолчанию — пустая песочница без .claude/logs/.
+SANDBOX=$(mktemp -d)
+export CLAUDE_PROJECT_DIR="$SANDBOX"
+
 fail() { printf 'СБОЙ  %s\n      %s\n' "$1" "$2"; FAILED=1; }
 
 detail() {  # <корень> <id пробы> → detail пробы
@@ -263,7 +269,7 @@ WT=$(mktemp -d); mkdir -p "$WT/main/.claude/logs"
 ( cd "$WT/main" && git init -q && printf 'x\n' > a.txt && git add -A \
   && git -c user.email=t@t -c user.name=t commit -qm x \
   && git worktree add -q ../tree -b wt 2>/dev/null )
-printf '{"a":1}\n' > "$WT/main/.claude/logs/agents.jsonl"
+printf '{"event": "SubagentStart", "agent_type": "x"}\n' > "$WT/main/.claude/logs/agents.jsonl"
 if [ -d "$WT/tree" ]; then
   [ "$(verdict "$WT/tree" observe.log)" = "ok" ] \
     || fail "observe.log: в рабочем дереве не найден журнал основного checkout" \
@@ -633,9 +639,56 @@ gate Stop '' 'Сделал схему. Какой тип взять для id �
   || fail "gate-check: проектный implementer не держится гейтом" ""
 [ "$(gate SubagentStop muagba-base:reviewer 'Нельзя сливать.' | cut -d'|' -f1)" = "0" ] \
   || fail "gate-check: проверяющего держит гейт кода" ""
+# Служебные вызовы Claude Code приходят с пустым agent_type — у narta это 151
+# из 190 SubagentStop. Гонять на них check.sh значит платить проверкой за
+# каждый вызов классификатора.
+[ "$(gate SubagentStop '' 'x' | cut -d'|' -f1)" = "0" ] \
+  || fail "gate-check: служебный вызов с пустым agent_type держит гейт" ""
 printf '#!/usr/bin/env bash\nexit 0\n' > "$GT/.claude/check.sh"
 [ "$(gate Stop '' 'Готово.')" = "0|" ] || fail "gate-check: зелёная проверка держит ход" ""
 rm -rf "$GT"
+
+# --- журнал: ходы, красный гейт, запреты хуков ------------------------------
+# Пишется только в проект, который завёл .claude/logs/; текста команды в нём
+# нет — только класс и шаблон пути.
+LG=$(mktemp -d); mkdir -p "$LG/.claude"; git -C "$LG" init -q
+printf '.env\n' > "$LG/.claude/protected-paths.txt"
+printf '#!/usr/bin/env bash\necho "==> lint"\necho "==> tests"\necho "E   assert 1 == 2"\nexit 1\n' > "$LG/.claude/check.sh"
+chmod +x "$LG/.claude/check.sh"
+hook() {  # <скрипт> <json> — хук в проекте LG
+  printf '%s' "$2" | CLAUDE_PROJECT_DIR="$LG" bash "$SCRIPTS/$1" >/dev/null 2>&1
+}
+hook gate-check.sh "{\"hook_event_name\":\"Stop\",\"session_id\":\"s\",\"last_assistant_message\":\"Готово.\",\"cwd\":\"$LG\"}"
+[ ! -e "$LG/.claude/logs" ] || fail "журнал: хук завёл .claude/logs/ в неподготовленном проекте" ""
+mkdir -p "$LG/.claude/logs"
+hook gate-check.sh "{\"hook_event_name\":\"Stop\",\"session_id\":\"s\",\"last_assistant_message\":\"Готово.\",\"cwd\":\"$LG\"}"
+hook gate-check.sh "{\"hook_event_name\":\"Stop\",\"session_id\":\"s\",\"last_assistant_message\":\"Взять uuid?\",\"cwd\":\"$LG\"}"
+hook guard-bash.sh "{\"tool_input\":{\"command\":\"echo SECRETTEXT > .env\"},\"cwd\":\"$LG\"}"
+hook protect-paths.sh "{\"tool_input\":{\"file_path\":\"$LG/.env\"},\"cwd\":\"$LG\"}"
+J="$LG/.claude/logs/agents.jsonl"
+jl() { python3 -c 'import json,sys
+rows=[json.loads(l) for l in open(sys.argv[1])]
+want=dict(kv.split("=",1) for kv in sys.argv[2:])
+sys.exit(0 if any(all(str(r.get(k))==v for k,v in want.items()) for r in rows) else 1)' "$J" "$@"; }
+[ "$(grep -c '"event": "turn"' "$J" 2>/dev/null)" = "2" ] \
+  || fail "журнал: закрытие хода записано не на каждом Stop" "$(cat "$J" 2>/dev/null)"
+jl event=gate decision=block "failed_at===> tests" branch=master \
+  || jl event=gate decision=block "failed_at===> tests" branch=main \
+  || fail "журнал: красный гейт без места падения или ветки" "$(cat "$J")"
+jl event=gate decision=released_on_question \
+  || fail "журнал: отпуск на вопросе не записан" "$(cat "$J")"
+jl event=guard hook=guard-bash decision=deny class=write-protected target=.env \
+  || fail "журнал: запрет guard-bash не записан" "$(cat "$J")"
+jl event=guard hook=protect-paths decision=deny class=write-protected target=.env \
+  || fail "журнал: запрет protect-paths не записан" "$(cat "$J")"
+grep -q SECRETTEXT "$J" && fail "журнал: в него попал текст команды" ""
+# Ходы и запреты — ещё не «агенты работали»: observe.log ждёт запуска сабагента.
+[ "$(verdict "$LG" observe.log)" = "fail" ] \
+  || fail "observe.log: журнал без запусков агентов принят" "$(detail "$LG" observe.log)"
+printf '{"event": "SubagentStop", "agent_type": "x"}\n' >> "$J"
+[ "$(verdict "$LG" observe.log)" = "ok" ] \
+  || fail "observe.log: запуск агента в журнале не найден" "$(detail "$LG" observe.log)"
+rm -rf "$LG"
 
 # --- enforce.attribution: подпись агента — решение человека -----------------
 # Умолчание Claude Code — подписываться. Проба ловит отсутствие решения, а не
@@ -729,5 +782,7 @@ python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
 python3 "$SCRIPTS/setup_state.py" --check-questions >/dev/null 2>&1 \
   || fail "setup_state --check-questions" "есть машинная проба без вопроса в банке"
 
+[ -z "$(ls -A "$SANDBOX")" ] || fail "прогон насорил в песочницу проекта сессии" "$(ls -A "$SANDBOX")"
+rm -rf "$SANDBOX"
 [ "$FAILED" -eq 0 ] && echo "хуки и пробы: ок"
 exit "$FAILED"

@@ -1444,9 +1444,25 @@ def main_checkout(c: Ctx) -> Path | None:
     return q.parent
 
 
+def agents_ran(q: Path) -> bool:
+    """В журнале есть запуск сабагента.
+
+    Непустоты мало: с 0.16.2 туда же пишутся закрытия ходов, красный гейт и
+    запреты хуков, и журнал непуст, даже если ни один агент не запускался.
+    """
+    try:
+        with open(q, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"SubagentStart"' in line or '"SubagentStop"' in line:
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def pr_observe_log(c: Ctx) -> V:
     p = c.p(".claude/logs/agents.jsonl")
-    if p.exists() and p.stat().st_size > 0:
+    if agents_ran(p):
         return ok()
     # log-agent.sh намеренно пишет в каталог сессии, а не в дерево, где
     # оказался сабагент: агент принадлежит запустившей его сессии. Если
@@ -1457,7 +1473,7 @@ def pr_observe_log(c: Ctx) -> V:
     sess = os.environ.get("CLAUDE_PROJECT_DIR")
     if sess:
         q = Path(sess) / ".claude" / "logs" / "agents.jsonl"
-        if q.resolve() != p.resolve() and q.exists() and q.stat().st_size > 0:
+        if q.resolve() != p.resolve() and agents_ran(q):
             return ok(f"журнал ведётся в каталоге сессии: {q}")
     # Пробы гоняют и в рабочем дереве — например, чтобы понять, что там
     # покраснело. `.claude/logs/` в игноре и в дерево не копируется, поэтому
@@ -1466,9 +1482,9 @@ def pr_observe_log(c: Ctx) -> V:
     main = main_checkout(c)
     if main:
         q = main / ".claude" / "logs" / "agents.jsonl"
-        if q.exists() and q.stat().st_size > 0:
+        if agents_ran(q):
             return ok(f"журнал в основном checkout: {q}")
-    return bad("журнал агентов пуст",
+    return bad("в журнале нет ни одного запуска агента",
                "он непуст только если агенты уже работали — закроется на Э11")
 
 

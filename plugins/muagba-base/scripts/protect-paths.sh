@@ -55,6 +55,7 @@ for p in "${PATTERNS[@]}"; do
   if [ "$WRITE_ONCE" -eq 1 ]; then
     # Файла ещё нет — это создание, оно разрешено.
     [ -e "$FILE_PATH" ] || continue
+    log_event guard hook=protect-paths decision=deny class=write-once target="+$p"
     cat >&2 <<MSG
 Запрещено: $FILE_PATH попадает под шаблон '$p' — записывается один раз.
 Что делать: этот файл менять нельзя, его правят только руками человека.
@@ -64,6 +65,7 @@ MSG
     exit 2
   fi
 
+  log_event guard hook=protect-paths decision=deny class=write-protected target="$p"
   cat >&2 <<MSG
 Запрещено: $FILE_PATH попадает под защищённый шаблон '$p'.
 Что делать: правка этого файла — работа человека. Попроси внести её самому
