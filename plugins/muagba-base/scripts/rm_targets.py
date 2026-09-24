@@ -21,31 +21,12 @@ import os
 import shlex
 import sys
 
+from shell_split import segments  # общий разбор: см. shell_split.py
+
 # Команды, стирающие файл. `shred` сюда же: он делает то же самое, только
 # необратимее. `git rm` не разбираем — первый токен `git`, и одноимённых
 # подкоманд у него хватает.
 DELETERS = {"rm", "rmdir", "unlink", "shred"}
-
-
-def segments(command: str) -> list[list[str]]:
-    """Команда разбивается на простые по ; && || |."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return []
-    out, cur = [], []
-    for t in tokens:
-        if t in (";", "&&", "||", "|", "&"):
-            if cur:
-                out.append(cur)
-            cur = []
-        else:
-            cur.append(t)
-    if cur:
-        out.append(cur)
-    return out
 
 
 def operands(parts: list[str]) -> list[str]:

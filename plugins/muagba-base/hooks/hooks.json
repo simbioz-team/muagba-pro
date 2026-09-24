@@ -94,6 +94,12 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/log-agent.sh\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/gate-check.sh\"",
+            "timeout": 600,
+            "statusMessage": "Гейт исполнителя: прогон проверки проекта..."
           }
         ]
       }

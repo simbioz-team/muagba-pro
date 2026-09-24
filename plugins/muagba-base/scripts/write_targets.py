@@ -25,6 +25,8 @@ import re
 import shlex
 import sys
 
+from shell_split import segments  # общий разбор: см. shell_split.py
+
 REDIRECTS = {">", ">>", "1>", "2>", "&>", ">|"}
 # Перенаправления ввода тоже съедают следующий токен: без этого `tee .env
 # < /dev/null` отдавал в цели и `<`, и `/dev/null`.
@@ -60,27 +62,6 @@ PY_WRITE_ANY = re.compile(
     r"""|\bopen\s*\([^)]*,\s*["']?[wax]"""
     r"""|\bos\s*\.\s*(replace|rename|remove|unlink|makedirs)\s*\("""
     r"""|\bshutil\s*\.\s*(copy\w*|move|rmtree)\s*\(""")
-
-
-def segments(command: str) -> list[list[str]]:
-    """Команда разбивается на простые по ; && || |."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return []
-    out, cur = [], []
-    for t in tokens:
-        if t in (";", "&&", "||", "|", "&"):
-            if cur:
-                out.append(cur)
-            cur = []
-        else:
-            cur.append(t)
-    if cur:
-        out.append(cur)
-    return out
 
 
 def argv_of(parts: list[str]) -> list[str]:

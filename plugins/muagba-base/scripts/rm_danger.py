@@ -16,32 +16,13 @@ import os
 import shlex
 import sys
 
+from shell_split import segments  # общий разбор: см. shell_split.py
+
 RECURSIVE = {"r", "R"}
 FORCE = {"f"}
 
 # Цели, для которых рекурсивное удаление почти наверняка катастрофа.
 FATAL_EXACT = {"/", "/*", "~", "~/", "$HOME", "${HOME}", "."}
-
-
-def segments(command: str) -> list[list[str]]:
-    """Команда разбивается на простые по ; && || |."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return []
-    out, cur = [], []
-    for t in tokens:
-        if t in (";", "&&", "||", "|", "&"):
-            if cur:
-                out.append(cur)
-            cur = []
-        else:
-            cur.append(t)
-    if cur:
-        out.append(cur)
-    return out
 
 
 def fatal_target(parts: list[str]) -> str | None:

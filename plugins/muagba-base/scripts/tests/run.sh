@@ -214,11 +214,46 @@ printf 'echo ok\n' > "$CB/.claude/check.sh"
 [ "$(verdict "$CB" check.ci)" = "ok" ] \
   || fail "check.ci: PR-триггер без ограничения по веткам не признан" "$(detail "$CB" check.ci)"
 
-# А вот когда ограничены оба триггера — красная по делу.
-printf 'on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' \
-  > "$CB/.github/workflows/ci.yml"
-[ "$(verdict "$CB" check.ci)" = "fail" ] \
-  || fail "check.ci: оба триггера слушают main, а работа в feat/ — должна краснеть" "$(detail "$CB" check.ci)"
+# `pull_request: branches:` — это базы PR, а не ветки работы. Фича-ветка,
+# уходящая PR-ом в существующую базу, CI проходит. Прежде этот случай
+# считался красным — тест закреплял ошибку пробы. Нашёл проект narta:
+# `pull_request: branches: [develop, main]`, работа в setup/e7-confirm.
+ci_yml() {  # <тело on:> → ci.yml
+  printf 'on:\n%s\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' "$1" \
+    > "$CB/.github/workflows/ci.yml"
+}
+( cd "$CB" && git branch -q -f develop )
+ci_yml '  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]'
+detail "$CB" check.ci | grep -q 'PR из feat/008-something в develop' \
+  || fail "check.ci: PR в существующую базу не признан" "$(detail "$CB" check.ci)"
+# Список веток столбиком — та же семантика.
+ci_yml '  pull_request:
+    branches:
+      - develop'
+detail "$CB" check.ci | grep -q 'PR из feat/008-something в develop' \
+  || fail "check.ci: база PR списком не прочитана" "$(detail "$CB" check.ci)"
+# Базы нет ни одной — тот самый master при ci на main: краснеть по делу.
+ci_yml '  push:
+    branches: [trunk]
+  pull_request:
+    branches: [trunk]'
+detail "$CB" check.ci | grep -q 'а работа идёт в feat/008-something' \
+  || fail "check.ci: несуществующая база принята" "$(detail "$CB" check.ci)"
+# Работа прямо в базе, а push на неё не настроен: PR в себя не бывает.
+( cd "$CB" && git checkout -q develop )
+ci_yml '  pull_request:
+    branches: [develop]'
+detail "$CB" check.ci | grep -q 'а работа идёт в develop' \
+  || fail "check.ci: работа в единственной базе без push принята" "$(detail "$CB" check.ci)"
+# push по шаблону.
+( cd "$CB" && git checkout -qb release/1.2 )
+ci_yml '  push:
+    branches: ["release/**"]'
+detail "$CB" check.ci | grep -q 'push в release/1.2' \
+  || fail "check.ci: шаблон release/** не сработал" "$(detail "$CB" check.ci)"
 rm -rf "$CB"
 
 # --- observe.log: пробы гоняют и в рабочем дереве ----------------------------
@@ -318,6 +353,34 @@ PY')" = "BLOCK" ] || fail "guard-bash: вычисленный путь к защ
 
 [ "$(guard 'python3 -c "import pathlib; pathlib.Path(\"report.md\").write_text(\"x\")"')" = "OK" ] \
   || fail "guard-bash: безобидная запись заблокирована" ""
+
+# Составные конструкции оболочки. Разбор резал только по ; && || |, и
+# команда внутри if/цикла/группы начиналась с then, do, { — `cp` в ней не
+# узнавался. Защищённый .env так записали на Э5 проекта narta.
+while IFS= read -r c; do
+  [ "$(guard "$c")" = "BLOCK" ] || fail "guard-bash: запись в .env внутри конструкции пропущена" "$c"
+done <<'CASES'
+if [ ! -f .env ]; then cp .env.example .env; fi
+while false; do cp a .env; done
+for f in a; do cp $f .env; done
+{ cp .env.example .env; }
+( cp .env.example .env )
+echo $(cp .env.example .env)
+case x in x) cp .env.example .env;; esac
+CASES
+# Перевод строки — разделитель. Прежде вторая строка считалась аргументами
+# первой: `echo hi` и `cp … .env` проходили как один безобидный echo.
+[ "$(guard 'echo hi
+cp .env.example .env')" = "BLOCK" ] || fail "guard-bash: вторая строка команды не разобрана" ""
+# `<<` внутри кавычек — не heredoc: иначе следующие строки проглатывались бы
+# как его тело вместе с командами.
+[ "$(guard 'echo "<<X"
+cp .env.example .env
+X')" = "BLOCK" ] || fail "guard-bash: heredoc из кавычек проглотил команду" ""
+# А тело настоящего heredoc — данные: слова в нём командами не считаются.
+[ "$(guard 'cat <<EOF > notes.md
+then cp .env.example .env
+EOF')" = "OK" ] || fail "guard-bash: текст heredoc принят за команду" ""
 
 # Чтение защищённого файла без записи блокировать не за что.
 [ "$(guard 'python3 -c "import pathlib; print(pathlib.Path(\"docs/workflow.md\").read_text())"')" = "OK" ] \
@@ -542,6 +605,37 @@ printf '# Конституция\n\n## Core Principles\n\n### I. Раз\nТел�
 [ "$(verdict "$CP" const.exists)" = "ok" ] \
   || fail "const.exists: конституция в .specify/memory не найдена" "$(cd "$CP" && python3 "$SCRIPTS/setup_state.py" --json | head -c 400)"
 rm -rf "$CP"
+
+# --- gate-check: гейт хода, остановка ради вопроса, исполнитель -------------
+GT=$(mktemp -d); mkdir -p "$GT/.claude"
+printf '#!/usr/bin/env bash\necho КРАСНО\nexit 1\n' > "$GT/.claude/check.sh"; chmod +x "$GT/.claude/check.sh"
+gate() {  # <событие> <agent_type> <последнее сообщение> → "код|stdout"
+  local out code
+  out=$(python3 -c 'import json,sys;print(json.dumps({"hook_event_name":sys.argv[1],"agent_type":sys.argv[2],"last_assistant_message":sys.argv[3],"cwd":sys.argv[4]}))' \
+    "$1" "$2" "$3" "$GT" | bash "$SCRIPTS/gate-check.sh" 2>/dev/null); code=$?
+  printf '%s|%s' "$code" "$out"
+}
+[ "$(gate Stop '' 'Готово, всё сделал.')" = "2|" ] \
+  || fail "gate-check: доклад при красной проверке отпущен" "$(gate Stop '' 'Готово, всё сделал.')"
+# Остановка ради вопроса отпускается, но человек видит красноту — проверяем
+# именно предупреждение, а не только код: код 0 дал бы и сломанный запуск.
+gate Stop '' 'Сделал схему. Какой тип взять для id — **uuid или bigint?**' \
+  | grep -q '^0|.*systemMessage.*check.sh красный' \
+  || fail "gate-check: вопрос при красной проверке не отпущен с предупреждением" \
+          "$(gate Stop '' 'Какой тип взять?')"
+# Вопрос в середине, а в конце доклад — это доклад.
+[ "$(gate Stop '' 'Взять uuid? Взял uuid. Готово.' | cut -d'|' -f1)" = "2" ] \
+  || fail "gate-check: вопрос не в конце принят за остановку ради вопроса" ""
+# Исполнитель держится гейтом и на SubagentStop; остальные роли — нет.
+[ "$(gate SubagentStop muagba-base:implementer 'Готово.' | cut -d'|' -f1)" = "2" ] \
+  || fail "gate-check: исполнитель ушёл с красной проверкой" ""
+[ "$(gate SubagentStop implementer 'Готово.' | cut -d'|' -f1)" = "2" ] \
+  || fail "gate-check: проектный implementer не держится гейтом" ""
+[ "$(gate SubagentStop muagba-base:reviewer 'Нельзя сливать.' | cut -d'|' -f1)" = "0" ] \
+  || fail "gate-check: проверяющего держит гейт кода" ""
+printf '#!/usr/bin/env bash\nexit 0\n' > "$GT/.claude/check.sh"
+[ "$(gate Stop '' 'Готово.')" = "0|" ] || fail "gate-check: зелёная проверка держит ход" ""
+rm -rf "$GT"
 
 # --- enforce.attribution: подпись агента — решение человека -----------------
 # Умолчание Claude Code — подписываться. Проба ловит отсутствие решения, а не

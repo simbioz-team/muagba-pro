@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import fnmatch
 import json
 import os
 import re
@@ -888,36 +889,54 @@ def yaml_run_commands(text: str) -> str:
     return "\n".join(out)
 
 
-def ci_unrestricted(text: str) -> bool:
-    """Есть ли триггер, который не ограничен ветками.
+def ci_triggers(text: str) -> dict | None:
+    """Триггеры сборки: событие → список веток или None, если без ограничения.
 
-    `pull_request:` без `branches:` запускает сборку с любой ветки — значит
-    арбитр работает, как бы ни называлась текущая. Каркас несёт ровно такой
-    `ci.yml`, и проба ругалась на файл, который база сама и кладёт: девять
-    зелёных прогонов по PR, а гейт красный на всех девяти ветках.
+    Нужен не общий список веток, а по событию: у `push` в `branches:` стоят
+    ветки, КУДА пушат, у `pull_request` — ветки, В КОТОРЫЕ открыт PR. Слитые
+    в одну кучу, они давали ложное красное: фича-ветка, уходящая PR-ом в
+    develop, проверялась CI, а проба сравнивала её с именами баз. Нашёл
+    проект, ведущий на базе живую разработку.
     """
     m = re.search(r"^on:[ \t]*(.*)$", text, re.M)
     if not m:
-        return False
+        return None
     tail = m.group(1).split("#")[0].strip()
-    if tail:
-        return True                      # `on: push` либо `on: [push, pull_request]`
+    if tail:                              # `on: push` либо `on: [push, pull_request]`
+        return {e.strip(): None for e in tail.strip("[]").split(",") if e.strip()}
     body = text[m.end():]
     nxt = re.search(r"^\S", body, re.M)
     if nxt:
         body = body[: nxt.start()]
     lines = [l for l in body.splitlines() if l.strip() and not l.strip().startswith("#")]
     if not lines:
-        return False
+        return None
     indent = min(len(l) - len(l.lstrip()) for l in lines)
-    blocks: list[list[str]] = []
+    out: dict = {}
+    event = None
+    in_list = False
     for l in lines:
-        head = len(l) - len(l.lstrip()) == indent and re.match(r"^\s*-?\s*[\w-]+:?\s*$", l)
-        if head:
-            blocks.append([l])
-        elif blocks:
-            blocks[-1].append(l)
-    return any(not any("branches" in x for x in b[1:]) for b in blocks)
+        lead = len(l) - len(l.lstrip())
+        st = l.split("#")[0].strip()
+        if lead == indent:
+            event = st.lstrip("-").strip().rstrip(":").strip()
+            out[event] = None
+            in_list = False
+            continue
+        if event is None:
+            continue
+        mb = re.match(r"branches:\s*(.*)$", st)
+        if mb:
+            inline = mb.group(1).strip()
+            out[event] = [b.strip().strip("'\"") for b in inline.strip("[]").split(",")
+                          if b.strip()] if inline else []
+            in_list = not inline
+            continue
+        if in_list and st.startswith("-"):
+            out[event].append(st.lstrip("-").strip().strip("'\""))
+            continue
+        in_list = False
+    return out
 
 
 def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
@@ -926,16 +945,9 @@ def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
     Второй круг: проект восемь этапов прожил на `master`, пока файл сборки
     ждал `main`. Гейт был зелёным всё это время — вызов на месте, просто
     никогда не срабатывал."""
-    listed: set[str] = set()
-    for m in re.finditer(r"branches:\s*\[([^\]]*)\]", text):
-        listed |= {b.strip().strip("'\"") for b in m.group(1).split(",") if b.strip()}
-    for m in re.finditer(r"branches:\s*\n((?:\s*-\s*.+\n)+)", text):
-        listed |= {l.strip().lstrip("-").strip().strip("'\"")
-                   for l in m.group(1).splitlines() if l.strip()}
-    if not listed or any("*" in b for b in listed):
+    trig = ci_triggers(text)
+    if not trig:
         return ok(name)
-    if ci_unrestricted(text):
-        return ok(f"{name}: есть триггер без ограничения по веткам")
     rc, branch = c.git("rev-parse", "--abbrev-ref", "HEAD")
     if rc != 0 or not branch or branch == "HEAD":
         # На ветке без коммитов rev-parse молчит, а имя уже есть — и именно
@@ -943,9 +955,31 @@ def ci_branch_matches(c: Ctx, name: str, text: str) -> V:
         rc, branch = c.git("symbolic-ref", "--short", "HEAD")
     if rc != 0 or not branch:
         return ok(name)
-    if branch in listed:
-        return ok(f"{name}: {branch}")
-    return bad(f"{name} слушает {', '.join(sorted(listed))}, а работа идёт в {branch}",
+
+    def hit(pats: list[str], b: str) -> bool:
+        return any(fnmatch.fnmatchcase(b, p.replace("**", "*")) for p in pats)
+
+    push = [e for e in trig if e == "push"]
+    if push and (trig["push"] is None or hit(trig["push"], branch)):
+        return ok(f"{name}: push в {branch}")
+    prs = [e for e in trig if e in ("pull_request", "pull_request_target")]
+    if any(trig[e] is None for e in prs):
+        return ok(f"{name}: есть триггер без ограничения по веткам")
+    # PR-триггер с `branches:` слушает базы. Работа в любой другой ветке
+    # проверяется, если хоть одна из баз существует: в неё и уйдёт PR. Нет ни
+    # одной — тот самый master при ci на main.
+    bases = [b for e in prs for b in trig[e]]
+    _, refs = c.git("for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")
+    _, remotes = c.git("remote")
+    rset = set(remotes.split())
+    have = set(refs.split())
+    have |= {r.split("/", 1)[1] for r in refs.split()
+             if "/" in r and r.split("/", 1)[0] in rset}
+    live = [b for b in bases if b != branch and (b in have or "*" in b)]
+    if live:
+        return ok(f"{name}: PR из {branch} в {', '.join(live)}")
+    listed = sorted(set(bases) | set(trig.get("push") or []))
+    return bad(f"{name} слушает {', '.join(listed) or '—'}, а работа идёт в {branch}",
                "привести имя ветки и триггер сборки в соответствие — иначе "
                "арбитр не запускается ни разу, а гейт зелёный")
 
