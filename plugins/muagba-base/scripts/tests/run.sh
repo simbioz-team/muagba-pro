@@ -190,6 +190,44 @@ printf '%s' "$OUT" | grep -q 'нет принципа II' \
 printf -- '- [ ] T001 сделать → результат [R1]\n  Файлы: a.py\n' > "$SP/specs/001-x/tasks.md"
 OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1); CODE=$?
 [ "$CODE" -eq 0 ] || fail "check_specs: правильная спека должна проходить" "$OUT"
+
+# Находки проекта narta на форме базы. Требования — только в своём разделе:
+# `- R1.` в нумерации решений иначе становилась требованием без проверки.
+spec() { printf -- '- **status:** %s\n\n## Требования\n\n- R1. КОГДА а СИСТЕМА ДОЛЖНА б\n  Проверка: тест\n\n%s\n' "$1" "$2" \
+  > "$SP/specs/001-x/spec.md"; (cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1); }
+OUT=$(spec active '## Решения по умолчанию
+
+- R2. взяли uuid
+  Почему: так проще')
+printf '%s' "$OUT" | grep -q 'R2' && fail "check_specs: R в решениях принята за требование" "$OUT"
+# Открытые вопросы при active — находка; «нет» — пусто.
+OUT=$(spec active '## Открытые вопросы
+
+- Кто владелец схемы?')
+printf '%s' "$OUT" | grep -q '«Открытые вопросы» не пуст' \
+  || fail "check_specs: active при открытых вопросах пропущен" "$OUT"
+OUT=$(spec active '## Открытые вопросы
+
+нет')
+printf '%s' "$OUT" | grep -q 'Открытые вопросы' && fail "check_specs: «нет» принято за вопрос" "$OUT"
+OUT=$(spec draft '## Открытые вопросы
+
+- Кто владелец схемы?')
+printf '%s' "$OUT" | grep -q 'Открытые вопросы' && fail "check_specs: draft с вопросами — не находка" "$OUT"
+# Решение, которое человек должен увидеть, не даёт поставить active.
+OUT=$(spec active '## Решения по умолчанию
+
+- Д1. роли БД — app и migrator
+  Почему: стандартно
+  Альтернатива: одна роль
+  Спросить: да')
+printf '%s' "$OUT" | grep -q '«Спросить: да»' \
+  || fail "check_specs: active при «Спросить: да» пропущен" "$OUT"
+# «Проверка:» отдельным пунктом — не проверка требования.
+printf -- '- **status:** draft\n\n## Требования\n\n- R1. КОГДА а СИСТЕМА ДОЛЖНА б\n- Проверка: тест\n' > "$SP/specs/001-x/spec.md"
+OUT=$(cd "$SP" && python3 "$SCRIPTS/check_specs.py" 2>&1)
+printf '%s' "$OUT" | grep -q 'у R1 нет «Проверка:»' \
+  || fail "check_specs: «Проверка:» отдельным пунктом засчитана" "$OUT"
 rm -rf "$SP"
 
 # --- setup_state: честно пустая папка ---------------------------------------
@@ -359,6 +397,28 @@ PY')" = "BLOCK" ] || fail "guard-bash: вычисленный путь к защ
 
 [ "$(guard 'python3 -c "import pathlib; pathlib.Path(\"report.md\").write_text(\"x\")"')" = "OK" ] \
   || fail "guard-bash: безобидная запись заблокирована" ""
+
+# Запись в литеральную цель плюс упоминание защищённого пути в данных — не
+# запись в защищённый путь. Строковый s.replace(a, b) принимался за
+# Path.replace и объявлял цель вычисленной. Нашёл narta на Э11: скрипт
+# правки спеки с «grep … .env» в тексте блокировался как запись в .env.
+[ "$(guard "python3 - <<'EOF'
+s = open('spec.md').read()
+s = s.replace('старое', 'Проверка: grep ^PORT .env')
+open('spec.md','w').write(s)
+EOF")" = "OK" ] || fail "guard-bash: литеральная запись с .env в данных заблокирована" ""
+# А цель-переменная и replace с одним аргументом — по-прежнему вычисленная.
+[ "$(guard "python3 - <<'EOF'
+p = '.e' + 'nv'  # .env
+open(p,'w').write('x')
+EOF")" = "BLOCK" ] || fail "guard-bash: open(переменная) с упоминанием .env пропущен" ""
+[ "$(guard "python3 - <<'EOF'
+import pathlib
+pathlib.Path('tmp').replace(target)  # target = .env
+EOF")" = "BLOCK" ] || fail "guard-bash: Path.replace(цель) с упоминанием .env пропущен" ""
+# Литеральная цель переименования — сама цель: раньше её ловил маркер на всё.
+[ "$(guard "python3 -c \"from pathlib import Path; Path('x').replace('.env')\"")" = "BLOCK" ] \
+  || fail "guard-bash: Path.replace('.env') пропущен" ""
 
 # Составные конструкции оболочки. Разбор резал только по ; && || |, и
 # команда внутри if/цикла/группы начиналась с then, do, { — `cp` в ней не
@@ -775,6 +835,12 @@ grep -rqs 'ВЫЖИМКА-42' "$JW/p/docs/journal/raw/" \
 jw reinject | grep -q 'docs/journal/2026-01-01.md' \
   || fail "journal_watch: после сжатия не назван журнал" "$(jw reinject)"
 rm -rf "$JW"
+
+# --- образец branch_policy в каркасе ----------------------------------------
+# Лежит выключенным, но проект, включивший его, получает ровно этот код —
+# значит, его тесты обязаны быть зелёными здесь.
+OUT=$(PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SCRIPTS/../../../template/.claude/hooks" -q 2>&1) \
+  || fail "branch_policy: тесты образца красные" "$OUT"
 
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \

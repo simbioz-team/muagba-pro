@@ -16,7 +16,13 @@
 - задачи `- [ ] T001 … → результат` со ссылкой `[R1, R2]` и строкой «Файлы:»;
 - отмеченная задача несёт, кто и когда её закрыл;
 - у спеки со `status: active` — ни одной живой пометки «[ТРЕБУЕТ УТОЧНЕНИЯ»
-  вне раздела «Решения по умолчанию», и каждое требование покрыто задачей.
+  вне раздела «Решения по умолчанию», пустой раздел «Открытые вопросы», ни
+  одного решения с «Спросить: да», и каждое требование покрыто задачей.
+
+Требования ищутся в разделе «Требования», если он есть, иначе по всему
+файлу. Иначе строка `- R1.` в любом другом разделе — например, в нумерации
+решений — становилась требованием без «Проверка:» и без задачи; писатель
+проекта narta обходил это кириллической «Р».
 
 `draft` проверяется на форму, `active` — ещё и на готовность. Спеки нет —
 проверять нечего, это не находка.
@@ -74,6 +80,19 @@ def has_storage(root: Path) -> bool:
     return bool((state.get("traits") or {}).get("storage"))
 
 
+def open_questions(spec: str) -> list[str]:
+    """Непустые строки раздела «Открытые вопросы» — без заголовка,
+    комментариев и явного «нет»."""
+    sec = section(spec, r"Открытые вопросы")
+    if not sec:
+        return []
+    body = re.sub(r"<!--.*?-->", "", sec, flags=re.S).splitlines()[1:]
+    items = [ln.strip() for ln in body if ln.strip()]
+    if len(items) == 1 and re.fullmatch(r"[—–-]|нет\.?|пусто\.?", items[0], re.I):
+        return []
+    return items
+
+
 def refs_of(body: str) -> set[int]:
     nums: set[int] = set()
     for r in re.findall(r"\[R([\dR,\s–-]+)\]", body):
@@ -104,10 +123,11 @@ def check_feature(d: Path, princ: list[str], storage: bool) -> list[str]:
         return [f"{d.name}/spec.md: нет строки `- **status:** draft|active`"]
     active = m.group(1) == "active"
 
-    reqs = [int(x) for x in REQ.findall(spec)]
+    req_text = section(spec, r"Требования") or spec
+    reqs = [int(x) for x in REQ.findall(req_text)]
     if not reqs:
         out.append(f"{d.name}/spec.md: нет требований вида `- R1. КОГДА … СИСТЕМА ДОЛЖНА …`")
-    for chunk in re.split(r"^(?=- R\d+\.)", spec, flags=re.M):
+    for chunk in re.split(r"^(?=- R\d+\.)", req_text, flags=re.M):
         mm = re.match(r"- R(\d+)\.", chunk)
         if mm and "Проверка:" not in chunk.split("\n- ", 1)[0]:
             out.append(f"{d.name}/spec.md: у R{mm.group(1)} нет «Проверка:»")
@@ -117,6 +137,12 @@ def check_feature(d: Path, princ: list[str], storage: bool) -> list[str]:
         if MARK in (spec.replace(defaults, "") if defaults else spec):
             out.append(f"{d.name}/spec.md: status active, но есть «{MARK}» вне раздела "
                        "«Решения по умолчанию» — уточнить у человека или вернуть draft")
+        if open_questions(spec):
+            out.append(f"{d.name}/spec.md: status active, но раздел «Открытые вопросы» "
+                       "не пуст — спросить человека или вернуть draft")
+        if re.search(r"Спросить:\s*да\b", defaults, re.I):
+            out.append(f"{d.name}/spec.md: status active, но в «Решения по умолчанию» есть "
+                       "решение с «Спросить: да» — вопрос не задан, а спека объявлена готовой")
         if MARK in defaults and "заказчик" not in defaults:
             out.append(f"{d.name}/spec.md: пометки в «Решения по умолчанию» без записи о том, "
                        "кто снял правило «плана нет, пока остались пометки»")

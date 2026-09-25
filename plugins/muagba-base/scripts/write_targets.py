@@ -99,11 +99,66 @@ def python_targets(argv: list[str]) -> list[str]:
     found += [m.group(1) for m in PY_PATH.finditer(text)]
     found += [m.group(2) for m in PY_OS.finditer(text)]
     # Запись есть, а цель могла быть вычислена — пусть вызывающая сторона
-    # сверит защищённые пути по тексту команды. Лишний маркер безвреден:
-    # если в тексте ни одного защищённого пути нет, он ничего не запретит.
-    if PY_WRITE_ANY.search(text):
+    # сверит защищённые пути по тексту команды. Но только если такая запись
+    # правда есть: маркер на всё подряд запрещал любой скрипт, где рядом с
+    # литеральной записью упоминался защищённый путь. Скрипт правки спеки с
+    # `open('spec.md','w')` и строкой «grep … .env» в тексте блокировался как
+    # запись в .env — нашёл проект narta на Э11.
+    found += [m.group(1) for m in MOVE_TO.finditer(text)]
+    if computed_write(text):
         found.append(UNRESOLVED)
     return found
+
+
+# Литерал в кавычках — цель известна. Без кавычек (`open(p, 'w')`) это
+# переменная, и цель вычисляется.
+QUOTED = r"""["']([^"']+)["']"""
+# У replace/rename цель — аргумент, а не путь перед точкой:
+# в Path('tmp').replace(target) литерал 'tmp' — источник.
+MOVE_TO = re.compile(rf"""\.\s*(?:replace|rename)\s*\(\s*{QUOTED}\s*\)""")
+LITERAL_WRITES = [
+    re.compile(rf"""\bopen\s*\(\s*{QUOTED}\s*,"""),
+    re.compile(rf"""\bPath\s*\(\s*{QUOTED}\s*\)\s*\.\s*(?!replace\b|rename\b)\w+\s*\("""),
+    re.compile(rf"""\bos\s*\.\s*(?!replace\b|rename\b)\w+\s*\(\s*{QUOTED}"""),
+    MOVE_TO,
+]
+
+
+def _two_args(text: str, start: int) -> bool:
+    """Есть ли в вызове, открытом перед `start`, запятая верхнего уровня.
+
+    `s.replace(a, b)` — строковый метод, `p.replace(target)` — переименование
+    файла. Различаются числом аргументов."""
+    depth, quote = 0, ""
+    for ch in text[start:start + 2000]:
+        if quote:
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return False
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return True
+    return False
+
+
+def computed_write(text: str) -> bool:
+    """Есть запись, цель которой не литерал."""
+    covered = [m.span() for rx in LITERAL_WRITES for m in rx.finditer(text)]
+    for m in PY_WRITE_ANY.finditer(text):
+        if any(a <= m.start() < b or a <= m.end() - 1 < b for a, b in covered):
+            continue
+        method = m.group(1)
+        if method in ("replace", "rename") and _two_args(text, m.end()):
+            continue
+        return True
+    return False
 
 
 def targets(parts: list[str]) -> list[str]:
