@@ -786,6 +786,58 @@ printf '# Цикл\n\n## Релизы\n\nРелизов нет: сервис р�
   || fail "cycle.release: «релизов нет» с причиной отвергнут" "$(detail "$RR" cycle.release)"
 rm -rf "$RR"
 
+# --- уборка рабочих деревьев ------------------------------------------------
+# Безопасная уборка разрешена правилами, опасная — запрет с причиной, не
+# вопрос: у narta каждое удаление дерева ночью ждало человека до утра.
+WD=$(mktemp -d); ( cd "$WD" && git init -q -b main && echo a > a && git add a \
+  && git -c user.email=t@t -c user.name=t commit -qm a && git worktree add -q wt -b feat \
+  && echo b > wt/b && git -C wt add b && git -C wt -c user.email=t@t -c user.name=t commit -qm b )
+# `|| true`: разбор выходит с 1 на находке, а прогон идёт с pipefail — без
+# этого `wd … | grep -q` падал бы и при найденном совпадении.
+wd() { printf '%s' "$1" | python3 "$SCRIPTS/worktree_danger.py" "$WD" 2>&1 || true; }
+[ -z "$(wd 'git worktree remove --force wt')" ] || fail "worktree: --force по чистому дереву запрещён" "$(wd 'git worktree remove --force wt')"
+echo x > "$WD/wt/dirty"
+wd 'git worktree remove --force wt' | grep -q 'незакоммиченной работой' \
+  || fail "worktree: --force по грязному дереву пропущен" "$(wd 'git worktree remove --force wt')"
+wd 'if true; then git worktree remove -f wt; fi' | grep -q 'незакоммиченной' \
+  || fail "worktree: --force внутри if пропущен" ""
+wd 'git branch -D feat' | grep -q 'нет ни в одной другой ветке' \
+  || fail "worktree: -D неслитой ветки пропущен" "$(wd 'git branch -D feat')"
+( cd "$WD" && git merge -q --ff-only feat )
+[ -z "$(wd 'git branch -D feat')" ] || fail "worktree: -D слитой ветки запрещён" "$(wd 'git branch -D feat')"
+wd 'rm -rf wt' | grep -q 'рабочему дереву' || fail "worktree: rm -rf по дереву пропущен" "$(wd 'rm -rf wt')"
+[ -z "$(wd 'rm -rf build')" ] || fail "worktree: rm -rf обычного каталога принят за дерево" ""
+[ -z "$(wd 'git worktree remove wt')" ] || fail "worktree: remove без --force запрещён — git сам откажет" ""
+# Через guard-bash — запрет, а не вопрос.
+printf '{"tool_input":{"command":"rm -rf wt"},"cwd":"%s"}' "$WD" \
+  | CLAUDE_PROJECT_DIR="$WD" bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1
+[ $? -eq 2 ] || fail "guard-bash: rm -rf по дереву не запрещён" ""
+rm -rf "$WD"
+
+# --- version_check: загружена та версия, что выпущена -----------------------
+VC=$(mktemp -d); mkdir -p "$VC/home" "$VC/cache/p/1.0.0/.claude-plugin" "$VC/mp/.claude-plugin" "$VC/mp/plugins/p/.claude-plugin"
+echo '{"name":"p","version":"1.0.0"}' > "$VC/cache/p/1.0.0/.claude-plugin/plugin.json"
+echo '{"plugins":[{"name":"p","source":"./plugins/p"}]}' > "$VC/mp/.claude-plugin/marketplace.json"
+echo '{"name":"p","version":"1.0.0"}' > "$VC/mp/plugins/p/.claude-plugin/plugin.json"
+( cd "$VC/mp" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm r && git tag p--v1.0.0 )
+SHA=$(git -C "$VC/mp" rev-parse HEAD)
+echo "{\"mp\":{\"installLocation\":\"$VC/mp\"}}" > "$VC/home/known_marketplaces.json"
+inst() { echo "{\"plugins\":{\"p@mp\":[{\"scope\":\"project\",\"installPath\":\"$VC/cache/p/1.0.0\",\"version\":\"1.0.0\",\"gitCommitSha\":\"$1\"}]}}" > "$VC/home/installed_plugins.json"; }
+vc() { CLAUDE_PLUGIN_ROOT="$VC/cache/p/1.0.0" MUAGBA_PLUGINS_HOME="$VC/home" python3 "$SCRIPTS/version_check.py"; }
+inst "$SHA"
+[ -z "$(vc)" ] || fail "version_check: выпущенная и свежая версия вызвала предупреждение" "$(vc)"
+echo '{"name":"p","version":"1.1.0"}' > "$VC/mp/plugins/p/.claude-plugin/plugin.json"
+vc | grep -q 'в маркетплейсе уже 1.1.0.*--scope project' \
+  || fail "version_check: устаревшая версия не замечена" "$(vc)"
+echo '{"name":"p","version":"1.0.0"}' > "$VC/mp/plugins/p/.claude-plugin/plugin.json"
+inst "0000000000000000000000000000000000000000"
+vc | grep -q 'собрана не из выпуска' || fail "version_check: сборка не из тега не замечена" "$(vc)"
+git -C "$VC/mp" tag -d p--v1.0.0 >/dev/null
+vc | grep -q 'нет среди выпусков' || fail "version_check: версия без тега не замечена" "$(vc)"
+[ -z "$(MUAGBA_PLUGINS_HOME="$VC/home" python3 "$SCRIPTS/version_check.py")" ] \
+  || fail "version_check: без CLAUDE_PLUGIN_ROOT не молчит" ""
+rm -rf "$VC"
+
 # --- ожидание подтверждения и долгие команды --------------------------------
 # Ночью вызов, ждущий человека, висел до утра, и журнал этого не отмечал.
 AW=$(mktemp -d); mkdir -p "$AW/.claude/logs"; git -C "$AW" init -q

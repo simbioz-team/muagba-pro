@@ -6,7 +6,11 @@
       "Bash(git diff *)",
       "Bash(git log *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git worktree list*)",
+      "Bash(git worktree prune*)",
+      "Bash(git worktree remove *)",
+      "Bash(git branch -d *)"
     ],
     "ask": [
       "Bash(git push *)",

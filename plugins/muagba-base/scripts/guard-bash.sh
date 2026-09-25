@@ -176,6 +176,15 @@ if [ -n "$DELETES" ]; then
   done <<< "$DELETES"
 fi
 
+# Уборка рабочих деревьев, которая уничтожит работу: --force по грязному
+# дереву, -D по неслитой ветке, rm по дереву. Запрет с причиной, а не вопрос:
+# ночью вопрос висит до утра, а оставленное дерево никому не мешает.
+WT_DANGER=$(printf '%s' "$CMD" | python3 "$(dirname "${BASH_SOURCE[0]}")/worktree_danger.py" "$(work_dir)" 2>/dev/null)
+if [ -n "$WT_DANGER" ]; then
+  CLASS=worktree; TARGET=""
+  block "$(printf '%s' "$WT_DANGER" | sed -n 1p)" "$(printf '%s' "$WT_DANGER" | sed -n 2p)"
+fi
+
 # Разбор по argv, а не по подстроке: упоминание опасной команды в тексте —
 # не её выполнение. Раньше `echo "не делай git reset --hard"` блокировался
 # наравне с самим сбросом, и даже процитировать совет было нельзя.

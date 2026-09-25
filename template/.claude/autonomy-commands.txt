@@ -8,3 +8,7 @@
 git status --short
 git add -A
 git commit -m "сообщение"
+git worktree list
+git worktree remove .claude/worktrees/<дерево>
+git branch -d <ветка-дерева>
+git worktree prune

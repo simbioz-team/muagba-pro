@@ -82,6 +82,16 @@
     ],
     "SessionStart": [
       {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/version_check.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "matcher": "compact",
         "hooks": [
           {
