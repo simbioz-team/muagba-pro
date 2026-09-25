@@ -126,3 +126,26 @@ def segments(command: str) -> list[list[str]]:
             continue
         result.append(seg)
     return result
+
+
+def command_class(command: str) -> str:
+    """Класс команды без её текста: программа и подкоманда каждой простой
+    команды, через «+». `git push && gh pr create --title …` → `git push+gh pr`.
+
+    Для журнала: видно, что за команда и была ли она составной, но ни
+    аргументов, ни путей, ни секретов в журнал не попадает.
+    """
+    out: list[str] = []
+    for seg in segments(command):
+        argv = [t for t in seg if "=" not in t or t.startswith("-")]
+        if not argv:
+            continue
+        head = argv[0].rsplit("/", 1)[-1]
+        sub = next((t for t in argv[1:2] if not t.startswith("-")), "")
+        # Подкоманда — короткое слово, а не путь или текст.
+        if sub and not (sub.isascii() and sub.replace("-", "").isalpha() and len(sub) <= 20):
+            sub = ""
+        cls = f"{head} {sub}".strip()
+        if cls not in out:
+            out.append(cls)
+    return "+".join(out)[:200]

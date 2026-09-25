@@ -10,7 +10,7 @@
   tick        PostToolUse. Контекст вырос на N токенов с последней записи
               журнала — напомнить агенту обновить журнал.
   postcompact PostCompact. Сохранить выжимку, которую сделал сам Claude Code,
-              в docs/journal/raw/. Страховка: агент мог журнал не дописать.
+              в .claude/logs/compact/. Страховка: агент мог журнал не дописать.
   reinject    SessionStart (compact). Вернуть агенту путь к журналу и
               указание перечитать его и продолжить.
 
@@ -76,7 +76,7 @@ def used_tokens(transcript):
 
 
 def entries(jd):
-    """Записи журнала: *.md верхнего уровня, кроме README. raw/ — не журнал."""
+    """Записи журнала: *.md верхнего уровня, кроме README."""
     return [p for p in jd.glob("*.md") if p.name.lower() != "readme.md"]
 
 
@@ -154,8 +154,11 @@ def postcompact(inp):
     summary = (inp.get("compact_summary") or "").strip()
     if not jd or not summary:
         return
-    raw = jd / "raw"
-    raw.mkdir(exist_ok=True)
+    # Не в docs/: выжимка — сырьё без frontmatter, и система документации
+    # роняла на ней свой гейт (нашёл проект narta). .claude/logs/ каркас и
+    # так держит в .gitignore.
+    raw = jd.parent.parent / ".claude" / "logs" / "compact"
+    raw.mkdir(parents=True, exist_ok=True)
     now = datetime.datetime.now()
     sid = str(inp.get("session_id") or "")[:8]
     p = raw / f"{now:%Y-%m-%d-%H%M%S}-{sid or 'nosession'}.md"
@@ -177,7 +180,7 @@ def reinject(inp):
         lines.append(f"1. Перечитай последнюю запись журнала: docs/journal/{nw.name}.")
     else:
         lines.append("1. Записей журнала пока нет — заведи её до продолжения работы.")
-    lines.append("2. Выжимка этого сжатия сохраняется в docs/journal/raw/ — сверь её с "
+    lines.append("2. Выжимка этого сжатия сохраняется в .claude/logs/compact/ — сверь её с "
                  "журналом и перенеси в журнал то, чего там нет.")
     lines.append("3. Продолжай с того, что в журнале названо следующим шагом.")
     print("\n".join(lines))

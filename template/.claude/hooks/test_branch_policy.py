@@ -60,7 +60,13 @@ class GitPush(unittest.TestCase):
         self.assertEqual(verdict("git push origin :feat/x"), "ask")
 
     def test_feature_push_chained_with_other_command_not_allowed(self) -> None:
-        self.assertIsNone(verdict("git push origin feat/x && rm -rf build"))
+        # Запрет с подсказкой, а не вопрос: вопрос ночью висит до утра.
+        self.assertEqual(verdict("git push origin feat/x && rm -rf build"), "deny")
+
+    def test_push_and_pr_chained_denied_with_hint(self) -> None:
+        result = bp.judge("git push -u origin feat/x && gh pr create --base develop --title t", None)
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("отдельными вызовами", result["hookSpecificOutput"]["permissionDecisionReason"])
 
     def test_other_commands_untouched(self) -> None:
         self.assertIsNone(verdict("git status --short"))

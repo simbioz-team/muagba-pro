@@ -786,6 +786,74 @@ printf '# Цикл\n\n## Релизы\n\nРелизов нет: сервис р�
   || fail "cycle.release: «релизов нет» с причиной отвергнут" "$(detail "$RR" cycle.release)"
 rm -rf "$RR"
 
+# --- ожидание подтверждения и долгие команды --------------------------------
+# Ночью вызов, ждущий человека, висел до утра, и журнал этого не отмечал.
+AW=$(mktemp -d); mkdir -p "$AW/.claude/logs"; git -C "$AW" init -q
+aw() { printf '%s' "$1" | CLAUDE_PROJECT_DIR="$AW" bash "$SCRIPTS/log-wait.sh" >/dev/null 2>&1; }
+aw "{\"hook_event_name\":\"PermissionRequest\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push -u origin feat/x && gh pr create --title SECRETTEXT\"},\"cwd\":\"$AW\"}"
+aw "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sleep 1\"},\"duration_ms\":1000,\"cwd\":\"$AW\"}"
+aw "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"uv run pytest\"},\"duration_ms\":90000,\"cwd\":\"$AW\"}"
+J="$AW/.claude/logs/agents.jsonl"
+grep -q '"event": "wait".*"class": "git push+gh pr"' "$J" \
+  || fail "журнал: ожидание подтверждения без класса составной команды" "$(cat "$J" 2>/dev/null)"
+grep -q SECRETTEXT "$J" && fail "журнал: в ожидание попал текст команды" ""
+grep -q '"event": "slow".*"class": "uv run".*"duration_ms": "90000"' "$J" \
+  || fail "журнал: долгая команда не записана" "$(cat "$J")"
+[ "$(grep -c '"event": "slow"' "$J")" = "1" ] || fail "журнал: быстрая команда записана как долгая" "$(cat "$J")"
+rm -rf "$AW"
+
+# --- preflight: что упрётся в подтверждение ---------------------------------
+PF=$(mktemp -d); PH=$(mktemp -d); mkdir -p "$PF/.claude/hooks" "$PF/.claude/logs"; git -C "$PF" init -q
+printf '.env\n' > "$PF/.claude/protected-paths.txt"
+cat > "$PF/.claude/hooks/allow_make.py" <<'PY'
+import json, sys
+c = json.load(sys.stdin)["tool_input"]["command"]
+if c.startswith("make ") or c.startswith("git push"):
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+        "permissionDecision": "allow", "permissionDecisionReason": "проект"}}))
+PY
+cat > "$PF/.claude/settings.json" <<JSON
+{"permissions": {"allow": ["Bash(git status *)"], "ask": ["Bash(git push *)"], "deny": ["Bash(git reset --hard *)"]},
+ "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 \"$PF/.claude/hooks/allow_make.py\""}]}]}}
+JSON
+cat > "$PF/cmds.txt" <<'TXT'
+# комментарий не команда
+git status --short
+git status && rm notes.md
+git reset --hard HEAD
+cp .env.example .env
+make build
+git push origin feat/x
+TXT
+OUT=$(HOME="$PH" python3 "$SCRIPTS/preflight.py" "$PF/cmds.txt" --cwd "$PF" 2>&1); CODE=$?
+pf() { printf '%s\n' "$OUT" | grep -q "^$1 *$2\$" || fail "preflight: «$2» — ждали $1" "$OUT"; }
+pf 'пройдёт' 'git status --short'
+pf 'СПРОСИТ' 'git status && rm notes.md'
+pf 'ЗАПРЕТ' 'git reset --hard HEAD'
+pf 'ЗАПРЕТ' 'cp .env.example .env'
+pf 'пройдёт' 'make build'
+# allow хука ask-правило не перебивает — ради этого проверка и нужна.
+pf 'СПРОСИТ' 'git push origin feat/x'
+[ "$CODE" -eq 1 ] || fail "preflight: при застревающих командах код 1, вышел $CODE" ""
+printf '%s' "$OUT" | grep -q 'упрётся в человека 4' || fail "preflight: неверный итог" "$OUT"
+[ -s "$PF/.claude/logs/agents.jsonl" ] && fail "preflight: синтетические вызовы писали журнал" "$(cat "$PF/.claude/logs/agents.jsonl")"
+rm -rf "$PF" "$PH"
+
+# --- observe.journal: журнал сессии включён и не роняет docsys -------------
+OJ=$(mktemp -d); mkdir -p "$OJ/.claude"; git -C "$OJ" init -q
+detail "$OJ" observe.journal | grep -q 'журнал сессии выключен' \
+  || fail "observe.journal: выключенный журнал не замечен" "$(detail "$OJ" observe.journal)"
+mkdir -p "$OJ/docs/journal"
+[ "$(verdict "$OJ" observe.journal)" = "ok" ] \
+  || fail "observe.journal: проект без docsys не должен краснеть" "$(detail "$OJ" observe.journal)"
+echo '{"exclude": ["docs/INDEX.md"]}' > "$OJ/.claude/doc-config.json"
+detail "$OJ" observe.journal | grep -q 'frontmatter' \
+  || fail "observe.journal: docsys проверяет журнал, а проба молчит" "$(detail "$OJ" observe.journal)"
+echo '{"exclude": ["docs/INDEX.md", "docs/journal/**"]}' > "$OJ/.claude/doc-config.json"
+[ "$(verdict "$OJ" observe.journal)" = "ok" ] \
+  || fail "observe.journal: исключение docs/journal/** не засчитано" "$(detail "$OJ" observe.journal)"
+rm -rf "$OJ"
+
 # --- journal_watch: журнал сессии через сжатие контекста ---------------------
 # Агент сам /compact не вызывает — сжимает Claude Code. Хук напоминает
 # записать журнал заранее, сохраняет выжимку сжатия и возвращает журнал после.
@@ -830,7 +898,7 @@ jw_usage 900000
 [ -z "$(jw tick ',"agent_id":"a1"')" ] || fail "journal_watch: напомнил сабагенту" ""
 
 jw postcompact ',"trigger":"auto","compact_summary":"ВЫЖИМКА-42"'
-grep -rqs 'ВЫЖИМКА-42' "$JW/p/docs/journal/raw/" \
+grep -rqs 'ВЫЖИМКА-42' "$JW/p/.claude/logs/compact/" \
   || fail "journal_watch: выжимка сжатия не сохранена" "$(ls -R "$JW/p/docs/journal")"
 jw reinject | grep -q 'docs/journal/2026-01-01.md' \
   || fail "journal_watch: после сжатия не назван журнал" "$(jw reinject)"

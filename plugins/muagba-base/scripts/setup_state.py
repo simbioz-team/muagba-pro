@@ -1488,6 +1488,27 @@ def pr_observe_log(c: Ctx) -> V:
                "он непуст только если агенты уже работали — закроется на Э11")
 
 
+def pr_observe_journal(c: Ctx) -> V:
+    """Журнал сессии включён и не роняет систему документации.
+
+    Хук журнала молчит, если нет docs/journal/, — и молчит незаметно. Проект
+    narta, настроенный до появления журнала, провёл так ночной автономный
+    прогон: сжатие вернуло бы агенту только инварианты.
+    """
+    if not c.p("docs/journal").is_dir():
+        return bad("журнал сессии выключен: нет docs/journal/",
+                   "завести docs/journal/README.md из каркаса — без каталога хук "
+                   "молчит, и после сжатия контекста агенту вернутся только инварианты")
+    cfg = c.doc_config()
+    if cfg:
+        excl = [str(x) for x in cfg.get("exclude") or []]
+        sample = "docs/journal/2026-01-01.md"
+        if not any(fnmatch.fnmatchcase(sample, p) for p in excl):
+            return bad("система документации проверяет записи журнала — у них нет frontmatter",
+                       ".claude/doc-config.json → exclude: добавить \"docs/journal/**\"")
+    return ok()
+
+
 def pr_observe_rule(c: Ctx) -> V:
     text = c.read("docs/lessons.md")
     if len(table_rows(text)) < 3:
@@ -1702,6 +1723,8 @@ PROBES = [
 
     Probe("observe.log", "Э10", "видно, кто что делал",
           fills=("формат .claude/logs/agents.jsonl", None), run=pr_observe_log),
+    Probe("observe.journal", "Э10", "журнал сессии переживёт сжатие",
+          fills=("docs/journal/", None), run=pr_observe_journal),
     Probe("observe.rule", "Э10", "обратная связь формализована", run=pr_observe_rule),
     Probe("observe.lessons", "Э10", "есть куда складывать выученное", run=pr_observe_lessons),
     Probe("observe.plugins", "Э10", "набор плагинов пересмотрен", kind=HUMAN,
