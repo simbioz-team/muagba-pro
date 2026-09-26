@@ -24,14 +24,22 @@ narta так и простоял: агент склеивал `git push && gh pr
 организации, хуки других плагинов. Сопоставление правил приближённое:
 `*` — любая последовательность, `:*` в конце — префикс.
 
+Вторая часть — **вопросы к человеку, оставшиеся в спеках**: открытые
+вопросы, решения со «Спросить: да», пометки «[ТРЕБУЕТ УТОЧНЕНИЯ». Этап,
+упирающийся в них, ночью встанет в первый же час — так и вышло у narta, и
+координатор заполнил простой спеками следующих этапов (`ADR-0014`, правила
+4–5). Их собирают одним списком и отвечают до ухода человека. Узнаются
+маркеры формы спек базы; у своей формы проект сверяет сам.
+
 Запуск: `python3 preflight.py [файл] [--cwd КАТАЛОГ]`. Код 1, если что-то
-спросит или будет запрещено.
+спросит, будет запрещено или в спеках остались вопросы к человеку.
 """
 from __future__ import annotations
 
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -150,6 +158,32 @@ def verdict(command: str, root: Path, rules: dict) -> tuple[str, list[str]]:
     return "СПРОСИТ", why
 
 
+MARK = "[ТРЕБУЕТ УТОЧНЕНИЯ"
+
+
+def spec_questions(root: Path) -> list[tuple[str, int, int, int]]:
+    """(спека, открытых вопросов, «Спросить: да», пометок) — где не ноль."""
+    out = []
+    for spec in sorted((root / "specs").glob("*/spec.md")):
+        try:
+            t = spec.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        oq = 0
+        m = re.search(r"^## Открытые вопросы.*?(?=^## |\Z)", t, re.M | re.S)
+        if m:
+            # Вопрос — пункт списка или заголовок «В1.»; пояснения и строка
+            # «Открытых вопросов нет: В1–В4 решены …» вопросами не считаются.
+            body = re.sub(r"<!--.*?-->", "", m.group(0), flags=re.S).splitlines()[1:]
+            oq = sum(1 for l in body if re.match(r"\s*(- |#{3,4} |\*\*)?В\d+[.:)]", l)
+                     or re.match(r"- \S", l))
+        ask = len(re.findall(r"^\s*Спросить:\s*да\b", t, re.M | re.I))
+        marks = t.count(MARK)
+        if oq or ask or marks:
+            out.append((spec.parent.name, oq, ask, marks))
+    return out
+
+
 def main() -> int:
     args = sys.argv[1:]
     root = Path.cwd()
@@ -158,12 +192,13 @@ def main() -> int:
         root = Path(args[i + 1]).resolve()
         del args[i:i + 2]
     src = Path(args[0]) if args else root / ".claude" / "autonomy-commands.txt"
+    cmds: list[str] = []
     if not src.is_file():
         print(f"preflight: нет {src}. Запиши туда рутинные команды этапа — по одной "
               "на строку, как их выполнит агент (с && и ; если он так склеивает).")
-        return 0
-    cmds = [l.strip() for l in src.read_text(encoding="utf-8").splitlines()
-            if l.strip() and not l.lstrip().startswith("#")]
+    else:
+        cmds = [l.strip() for l in src.read_text(encoding="utf-8").splitlines()
+                if l.strip() and not l.lstrip().startswith("#")]
     rules = bash_rules(root)
     stuck = 0
     for c in cmds:
@@ -172,9 +207,19 @@ def main() -> int:
         print(f"{v:8} {c}")
         for w in why:
             print(f"         {w}")
-    print(f"\npreflight: {len(cmds)} команд, упрётся в человека {stuck}. "
-          "Не учтены: режим прав, управляемые настройки, хуки других плагинов.")
-    return 1 if stuck else 0
+    if cmds:
+        print(f"\npreflight: {len(cmds)} команд, упрётся в человека {stuck}. "
+              "Не учтены: режим прав, управляемые настройки, хуки других плагинов.")
+    qs = spec_questions(root)
+    if qs:
+        print("\nВопросы к человеку в спеках — ответить до ухода, иначе этап встанет:")
+        for name, oq, ask, marks in qs:
+            parts = [f"открытых {oq}" if oq else "", f"«Спросить: да» {ask}" if ask else "",
+                     f"пометок {marks}" if marks else ""]
+            print(f"  {name}: " + ", ".join(p for p in parts if p))
+        print("Собери их одним списком по разделам задания; ответ — в источник, "
+              "в спеке — ссылка (ADR-0014).")
+    return 1 if stuck or qs else 0
 
 
 if __name__ == "__main__":

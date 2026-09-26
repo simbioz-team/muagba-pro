@@ -891,6 +891,25 @@ printf '%s' "$OUT" | grep -q 'упрётся в человека 4' || fail "pre
 [ -s "$PF/.claude/logs/agents.jsonl" ] && fail "preflight: синтетические вызовы писали журнал" "$(cat "$PF/.claude/logs/agents.jsonl")"
 rm -rf "$PF" "$PH"
 
+# --- preflight: вопросы к человеку в спеках ---------------------------------
+# Этап, упирающийся в неотвеченное, ночью встаёт в первый час (ADR-0014, 4–5).
+PQ=$(mktemp -d); PQH=$(mktemp -d); mkdir -p "$PQ/specs/001-a" "$PQ/specs/002-b" "$PQ/specs/003-c"
+printf -- '- **status:** draft\n\n## Открытые вопросы\n\n- В1. Кто владелец?\n- В2. Какой срок?\n\n## Решения по умолчанию\n\n- Д1. x\n  Спросить: да\n- Д2. y\n  Спросить: нет\n' > "$PQ/specs/001-a/spec.md"
+# Пояснение и «вопросов нет: решены» — не вопросы. Ложное срабатывание на
+# спеке narta, где владелец всё уже ответил.
+printf -- '- **status:** active\n\n## Открытые вопросы\n\nРешает владелец; пока пункты есть, спека draft.\n\nОткрытых вопросов нет: В1–В4 владелец решил 25.09.\n' > "$PQ/specs/002-b/spec.md"
+printf -- '- **status:** draft\n\n- R1. КОГДА а [ТРЕБУЕТ УТОЧНЕНИЯ: что]\n' > "$PQ/specs/003-c/spec.md"
+OUT=$(HOME="$PQH" python3 "$SCRIPTS/preflight.py" /nonexistent --cwd "$PQ" 2>&1); CODE=$?
+printf '%s' "$OUT" | grep -q '001-a: открытых 2, «Спросить: да» 1' \
+  || fail "preflight: вопросы спеки не посчитаны" "$OUT"
+printf '%s' "$OUT" | grep -q '002-b' && fail "preflight: «вопросов нет, решены» принято за вопросы" "$OUT"
+printf '%s' "$OUT" | grep -q '003-c: пометок 1' || fail "preflight: пометка не найдена" "$OUT"
+[ "$CODE" -eq 1 ] || fail "preflight: при вопросах в спеках код 1, вышел $CODE" ""
+rm -rf "$PQ/specs/001-a" "$PQ/specs/003-c"
+HOME="$PQH" python3 "$SCRIPTS/preflight.py" /nonexistent --cwd "$PQ" >/dev/null 2>&1 \
+  || fail "preflight: без вопросов и без команд код не 0" ""
+rm -rf "$PQ" "$PQH"
+
 # --- observe.journal: журнал сессии включён и не роняет docsys -------------
 OJ=$(mktemp -d); mkdir -p "$OJ/.claude"; git -C "$OJ" init -q
 detail "$OJ" observe.journal | grep -q 'журнал сессии выключен' \
