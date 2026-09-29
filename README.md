@@ -150,7 +150,7 @@ claude plugin update muagba-base@muagba-pro
 | `Stop` | `gate-check.sh` | Не даёт закрыть ход, пока `.claude/check.sh` красный. Остановку ради вопроса отпускает — с предупреждением человеку, что проверка красная |
 | `SubagentStop` | `gate-check.sh` | Тот же гейт для исполнителя (`implementer`); остальные роли код не правят и не держатся |
 | `PostToolUse` | `journal_watch.py tick` | Контекст вырос на `MUAGBA_JOURNAL_EVERY` токенов (150 000) с последней записи `docs/journal/` — напоминает агенту обновить журнал сессии. Сабагентам не напоминает |
-| `PermissionRequest` | `log-wait.sh` | Claude Code вот-вот спросит человека — событие `wait` в журнал. Ночью это простой до утра; время простоя — до следующего события сессии |
+| `PermissionRequest` | `log-wait.sh` | Claude Code вот-вот спросит человека — событие `wait` в журнал. Ночью это простой до утра; время простоя — до следующего события того же агента. `preflight` сверяет эти события со списком рутинных команд |
 | `PostToolUse` (Bash) | `log-wait.sh` | Команда шла дольше `MUAGBA_SLOW_MS` (60 с) — событие `slow` |
 | `PostCompact` | `journal_watch.py postcompact` | Сохраняет выжимку сжатия в `.claude/logs/compact/` |
 | `SessionStart` (startup, resume) | `version_check.py` | Загруженная версия плагина старше выпущенной или собрана не из тега выпуска — предупреждение человеку и агенту с командой обновления |

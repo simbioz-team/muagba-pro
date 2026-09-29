@@ -910,6 +910,51 @@ HOME="$PQH" python3 "$SCRIPTS/preflight.py" /nonexistent --cwd "$PQ" >/dev/null 
   || fail "preflight: без вопросов и без команд код не 0" ""
 rm -rf "$PQ" "$PQH"
 
+# --- preflight: где агент уже ждал ------------------------------------------
+# Список был зелёным, а агент ночью склеил push и PR и простоял до утра:
+# сверяем список с событиями wait журнала агентов по классу команды.
+PW=$(mktemp -d); PWH=$(mktemp -d); mkdir -p "$PW/.claude/logs"
+git -C "$PW" init -q; git -C "$PW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+printf '{"permissions": {"allow": ["Bash(git status *)"]}}' > "$PW/.claude/settings.json"
+printf 'git status --short\n' > "$PW/cmds.txt"
+python3 - "$PW/.claude/logs/agents.jsonl" <<'PY'
+import datetime, json, sys
+now = datetime.datetime.now().replace(microsecond=0)
+t = lambda **k: (now - datetime.timedelta(days=1) + datetime.timedelta(**k)).isoformat()
+ev = [
+    # ночная склейка: рядом работающий сабагент пишет в ту же сессию через 5 с —
+    # это не конец ожидания; конец — следующий ход самого координатора
+    {"ts": t(), "event": "wait", "session_id": "S", "agent_type": None, "tool": "Bash", "class": "git push+gh pr"},
+    {"ts": t(seconds=5), "event": "SubagentStop", "session_id": "S", "agent_type": ""},
+    {"ts": t(hours=2), "event": "turn", "session_id": "S", "agent_type": None},
+    {"ts": t(hours=3), "event": "wait", "session_id": "S", "agent_type": None, "tool": "Bash", "class": "git status"},
+    {"ts": t(hours=3, minutes=1), "event": "turn", "session_id": "S", "agent_type": None},
+    {"ts": t(hours=4), "event": "wait", "session_id": "S", "agent_type": None, "tool": "AskUserQuestion", "class": "AskUserQuestion"},
+    {"ts": (now - datetime.timedelta(days=20)).isoformat(), "event": "wait", "session_id": "S", "agent_type": None, "tool": "Bash", "class": "make"},
+]
+open(sys.argv[1], "w").write("".join(json.dumps(e) + "\n" for e in ev))
+PY
+OUT=$(HOME="$PWH" python3 "$SCRIPTS/preflight.py" "$PW/cmds.txt" --cwd "$PW" 2>&1); CODE=$?
+printf '%s' "$OUT" | grep -q 'НЕТ В СПИСКЕ git push+gh pr — 1 раз, ждал 2 ч 0 мин' \
+  || fail "preflight: ночная склейка не найдена или ожидание посчитано до события сабагента" "$OUT"
+printf '%s' "$OUT" | grep -q 'в списке     git status — 1 раз' || fail "preflight: команда из списка не узнана" "$OUT"
+printf '%s' "$OUT" | grep -q 'make' && fail "preflight: ожидание старше окна попало в вывод" "$OUT"
+printf '%s' "$OUT" | grep -q 'Вопросов человеку за 7 дн.: 1' || fail "preflight: вопросы человеку не посчитаны" "$OUT"
+[ "$CODE" -eq 1 ] || fail "preflight: при ожидании вне списка код 1, вышел $CODE" "$OUT"
+OUT=$(MUAGBA_PREFLIGHT_DAYS=30 HOME="$PWH" python3 "$SCRIPTS/preflight.py" "$PW/cmds.txt" --cwd "$PW" 2>&1)
+printf '%s' "$OUT" | grep -q 'НЕТ В СПИСКЕ make' || fail "preflight: окно MUAGBA_PREFLIGHT_DAYS не действует" "$OUT"
+# Из рабочего дерева журнал берётся в основном checkout'е: туда его пишет log_event.
+git -C "$PW" worktree add -q "$PW/wt" 2>/dev/null
+mkdir -p "$PW/wt/.claude"; cp "$PW/.claude/settings.json" "$PW/wt/.claude/"
+OUT=$(HOME="$PWH" python3 "$SCRIPTS/preflight.py" "$PW/cmds.txt" --cwd "$PW/wt" 2>&1)
+printf '%s' "$OUT" | grep -q 'git push+gh pr' || fail "preflight: из рабочего дерева журнал не найден" "$OUT"
+# Всё ожидавшее — в списке и проходит: код 0.
+printf 'git status --short\ngit push origin x && gh pr create\n' > "$PW/cmds2.txt"
+printf '{"permissions": {"allow": ["Bash(git status *)", "Bash(git push *)", "Bash(gh pr *)"]}}' > "$PW/.claude/settings.json"
+HOME="$PWH" python3 "$SCRIPTS/preflight.py" "$PW/cmds2.txt" --cwd "$PW" >/dev/null 2>&1 \
+  || fail "preflight: всё ожидавшее в списке и проходит, а код не 0" "$(HOME="$PWH" python3 "$SCRIPTS/preflight.py" "$PW/cmds2.txt" --cwd "$PW" 2>&1)"
+rm -rf "$PW" "$PWH"
+
 # --- observe.journal: журнал сессии включён и не роняет docsys -------------
 OJ=$(mktemp -d); mkdir -p "$OJ/.claude"; git -C "$OJ" init -q
 detail "$OJ" observe.journal | grep -q 'журнал сессии выключен' \

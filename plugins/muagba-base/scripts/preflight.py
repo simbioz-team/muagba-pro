@@ -31,11 +31,24 @@ narta так и простоял: агент склеивал `git push && gh pr
 4–5). Их собирают одним списком и отвечают до ухода человека. Узнаются
 маркеры формы спек базы; у своей формы проект сверяет сам.
 
+Третья часть — **где агент уже ждал**. Список команд пишет человек, а
+агент выполняет их по-своему: у narta в списке стояли одиночные `git push`
+и `gh pr create`, preflight был зелёным, а ночью агент склеил их в одну
+команду и простоял до утра дважды — 5 ч 47 мин и 4 ч 51 мин. Поэтому
+события `wait` из журнала агентов (`.claude/logs/agents.jsonl`) за
+последние `MUAGBA_PREFLIGHT_DAYS` дней (по умолчанию 7) сверяются со
+списком по классу команды (`git push+gh pr`): класса, которого в списке
+нет, preflight не проверял — это находка. Текста команды журнал не хранит,
+только класс, поэтому сверка идёт по нему. Вопросы человеку
+(`AskUserQuestion`) называются числом: это не права.
+
 Запуск: `python3 preflight.py [файл] [--cwd КАТАЛОГ]`. Код 1, если что-то
-спросит, будет запрещено или в спеках остались вопросы к человеку.
+спросит, будет запрещено, в спеках остались вопросы к человеку или агент
+ждал на команде, которой нет в списке.
 """
 from __future__ import annotations
 
+import datetime
 import fnmatch
 import json
 import os
@@ -45,7 +58,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from shell_split import segments  # noqa: E402
+from shell_split import command_class, segments  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -184,6 +197,70 @@ def spec_questions(root: Path) -> list[tuple[str, int, int, int]]:
     return out
 
 
+def agents_log(root: Path) -> Path | None:
+    """Журнал агентов пишется в основной checkout (`CLAUDE_PROJECT_DIR`), а
+    preflight могут запустить и из рабочего дерева."""
+    own = root / ".claude" / "logs" / "agents.jsonl"
+    if own.is_file():
+        return own
+    r = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute",
+                        "--git-common-dir"], capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        main = Path(r.stdout.strip()).parent / ".claude" / "logs" / "agents.jsonl"
+        if main.is_file():
+            return main
+    return None
+
+
+def past_waits(root: Path, days: int) -> tuple[dict[str, list[float]], int]:
+    """({класс Bash-команды: [секунд ожидания]}, вопросов человеку) за `days` дней.
+
+    Ожидание — до следующего события того же агента: та же сессия, та же
+    роль, и не SubagentStart/Stop — их пишут сабагенты, работающие рядом,
+    пока ждущий стоит. Без этого ночное ожидание narta в 5 ч 47 мин
+    выходило в 0: фоновый ревьюер закончил через пять секунд. Событие без
+    продолжения даёт 0 — сколько ждало, неизвестно, но что ждало, известно.
+    """
+    log = agents_log(root)
+    if not log:
+        return {}, 0
+    since = datetime.datetime.now() - datetime.timedelta(days=days)
+    events = []
+    try:
+        lines = log.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}, 0
+    for line in lines:
+        try:
+            e = json.loads(line)
+            ts = datetime.datetime.fromisoformat(e["ts"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        events.append((ts, e))
+    waits: dict[str, list[float]] = {}
+    asked = 0
+    for i, (ts, e) in enumerate(events):
+        if e.get("event") != "wait" or ts < since:
+            continue
+        if e.get("tool") != "Bash":
+            asked += e.get("tool") == "AskUserQuestion"
+            continue
+        nxt = next((t for t, n in events[i + 1:] if same_actor(n, e)), ts)
+        waits.setdefault(e.get("class") or "Bash", []).append((nxt - ts).total_seconds())
+    return waits, asked
+
+
+def same_actor(n: dict, e: dict) -> bool:
+    return (n.get("session_id") == e.get("session_id")
+            and (n.get("agent_type") or None) == (e.get("agent_type") or None)
+            and n.get("event") not in ("SubagentStart", "SubagentStop"))
+
+
+def span(sec: float) -> str:
+    m = int(sec // 60)
+    return f"{m // 60} ч {m % 60} мин" if m >= 60 else f"{m} мин"
+
+
 def main() -> int:
     args = sys.argv[1:]
     root = Path.cwd()
@@ -219,7 +296,26 @@ def main() -> int:
             print(f"  {name}: " + ", ".join(p for p in parts if p))
         print("Собери их одним списком по разделам задания; ответ — в источник, "
               "в спеке — ссылка (ADR-0014).")
-    return 1 if stuck or qs else 0
+    try:
+        days = int(os.environ.get("MUAGBA_PREFLIGHT_DAYS", "7"))
+    except ValueError:
+        days = 7
+    waits, asked = past_waits(root, days)
+    listed = {command_class(c) for c in cmds}
+    unlisted = {k: v for k, v in waits.items() if k not in listed}
+    if waits:
+        print(f"\nГде агент ждал подтверждения за {days} дн. (журнал агентов):")
+        for k, v in sorted(waits.items(), key=lambda kv: -sum(kv[1])):
+            mark = "НЕТ В СПИСКЕ" if k in unlisted else "в списке"
+            print(f"  {mark:12} {k} — {len(v)} раз, ждал {span(sum(v))}")
+        if unlisted:
+            print("Этих команд в списке нет, и preflight их не проверял: агент выполняет "
+                  "их в другом виде — склейкой, с `| tail`. Допиши в список как есть или "
+                  "разбей их правилом (например, отказ хука на склейку с подсказкой).")
+    if asked:
+        print(f"\nВопросов человеку за {days} дн.: {asked}. Это не права: такие вопросы "
+              "собирают до ухода человека (ADR-0014).")
+    return 1 if stuck or qs or unlisted else 0
 
 
 if __name__ == "__main__":
