@@ -1509,6 +1509,51 @@ def pr_observe_journal(c: Ctx) -> V:
     return ok()
 
 
+def compact_window(c: Ctx) -> tuple[int | None, str]:
+    """Окно автосжатия, заданное проектом, и откуда оно взято.
+
+    Порядок — как у Claude Code: переменная `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
+    сильнее настройки `autoCompactWindow`, личный файл сильнее общего.
+    """
+    files = (".claude/settings.local.json", ".claude/settings.json")
+    cfgs = [(rel, c.json(rel) or {}) for rel in files]
+    for rel, cfg in cfgs:
+        v = (cfg.get("env") or {}).get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+        if str(v or "").strip().isdigit():
+            return int(v), f"{rel} → env.CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+    for rel, cfg in cfgs:
+        v = cfg.get("autoCompactWindow")
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            return v, f"{rel} → autoCompactWindow"
+    return None, ""
+
+
+def pr_observe_compact(c: Ctx) -> V:
+    """Окно автосжатия задано проектом, и журнал успевает до сжатия.
+
+    Без явного окна Claude Code берёт значение по умолчанию модели или
+    эксперимента: на одной машине сжатие пришло на 150 000 токенов, хотя
+    окно модели — миллион. Когда сожмётся ночная сессия, решает не проект.
+    Напоминание обновить журнал (`MUAGBA_JOURNAL_EVERY`, 150 000) должно
+    приходить хотя бы вдвое раньше окна, иначе сжатие опередит его.
+    """
+    window, src = compact_window(c)
+    if window is None:
+        return bad("окно автосжатия не задано — его выбирает Claude Code по модели",
+                   ".claude/settings.json → \"autoCompactWindow\": 300000 (В10.5)")
+    every = 150000
+    for rel in (".claude/settings.local.json", ".claude/settings.json"):
+        v = ((c.json(rel) or {}).get("env") or {}).get("MUAGBA_JOURNAL_EVERY")
+        if str(v or "").strip().isdigit():
+            every = int(v)
+            break
+    if c.p("docs/journal").is_dir() and every * 2 > window:
+        return bad(f"сжатие придёт раньше напоминания журнала: окно {window}, "
+                   f"напоминание раз в {every} ({src})",
+                   f"увеличить окно или env.MUAGBA_JOURNAL_EVERY ≤ {window // 2}")
+    return ok(f"{window} ({src})")
+
+
 def pr_observe_rule(c: Ctx) -> V:
     text = c.read("docs/lessons.md")
     if len(table_rows(text)) < 3:
@@ -1725,6 +1770,8 @@ PROBES = [
           fills=("формат .claude/logs/agents.jsonl", None), run=pr_observe_log),
     Probe("observe.journal", "Э10", "журнал сессии переживёт сжатие",
           fills=("docs/journal/", None), run=pr_observe_journal),
+    Probe("observe.compact", "Э10", "окно автосжатия задано проектом",
+          fills=(".claude/settings.json", "autoCompactWindow"), run=pr_observe_compact),
     Probe("observe.rule", "Э10", "обратная связь формализована", run=pr_observe_rule),
     Probe("observe.lessons", "Э10", "есть куда складывать выученное", run=pr_observe_lessons),
     Probe("observe.plugins", "Э10", "набор плагинов пересмотрен", kind=HUMAN,

@@ -775,6 +775,31 @@ detail "$AT" enforce.attribution | grep -q 'settings.local.json' \
   || fail "enforce.attribution: личное решение не найдено" "$(detail "$AT" enforce.attribution)"
 rm -rf "$AT"
 
+# --- observe.compact: окно автосжатия задаёт проект -------------------------
+# Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
+OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q
+echo '{}' > "$OC/.claude/settings.json"
+detail "$OC" observe.compact | grep -q 'не задано' \
+  || fail "observe.compact: окно по умолчанию принято за решение" "$(detail "$OC" observe.compact)"
+echo '{"autoCompactWindow": 300000}' > "$OC/.claude/settings.json"
+detail "$OC" observe.compact | grep -q '300000 (.claude/settings.json → autoCompactWindow)' \
+  || fail "observe.compact: окно из настроек не найдено" "$(detail "$OC" observe.compact)"
+# Переменная сильнее настройки, личный файл сильнее общего — как в Claude Code.
+echo '{"env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000"}}' > "$OC/.claude/settings.local.json"
+detail "$OC" observe.compact | grep -q '200000 (.claude/settings.local.json → env' \
+  || fail "observe.compact: переменная окружения не перебила настройку" "$(detail "$OC" observe.compact)"
+# Журнал напоминает раз в 150 000 — окно 200 000 сожмёт раньше.
+mkdir -p "$OC/docs/journal"
+detail "$OC" observe.compact | grep -q 'раньше напоминания' \
+  || fail "observe.compact: напоминание журнала позже сжатия не замечено" "$(detail "$OC" observe.compact)"
+echo '{"env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000", "MUAGBA_JOURNAL_EVERY": "100000"}}' > "$OC/.claude/settings.local.json"
+[ "$(verdict "$OC" observe.compact)" = "ok" ] \
+  || fail "observe.compact: порог журнала вдвое ниже окна не принят" "$(detail "$OC" observe.compact)"
+rm -rf "$OC"
+# Каркас ставит окно сам: новый проект зеленеет без вопроса «где это задать».
+python3 -c "import json,sys; assert json.load(open(sys.argv[1]))['autoCompactWindow'] == 300000" \
+  "$SCRIPTS/../../../template/.claude/settings.json" || fail "каркас: нет autoCompactWindow 300000" ""
+
 # --- cycle.release: порядок выпуска ------------------------------------------
 # Слот каркаса — красный; «релизов нет» с причиной — законный ответ.
 RR=$(mktemp -d); mkdir -p "$RR/.claude" "$RR/docs"; git -C "$RR" init -q
