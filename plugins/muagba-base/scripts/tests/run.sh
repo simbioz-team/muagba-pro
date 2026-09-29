@@ -1006,8 +1006,11 @@ jw_usage() {  # <токены> → transcript с одним ответом мо�
 jw() {  # <режим> [лишние поля JSON] → stdout хука
   printf '{"session_id":"s1","cwd":"%s","transcript_path":"%s","scratchpad_dir":"%s"%s}' \
     "$JW/p" "$JW/t.jsonl" "$JW/s" "${2:-}" \
-    | MUAGBA_JOURNAL_EVERY=100000 python3 "$SCRIPTS/journal_watch.py" "$1"
+    | env -u CLAUDE_CODE_AUTO_COMPACT_WINDOW HOME="$JW/home" MUAGBA_JOURNAL_EVERY=100000 \
+      python3 "$SCRIPTS/journal_watch.py" "$1"
 }
+# Пользовательские настройки машины — не часть теста: окно в них сменило бы порог.
+mkdir -p "$JW/home"
 # Нет docs/journal/ — хук молчит при любом росте.
 jw_usage 50000; jw tick >/dev/null; jw_usage 900000
 [ -z "$(jw tick)" ] || fail "journal_watch: говорит в проекте без docs/journal/" ""
@@ -1037,6 +1040,35 @@ jw_usage 150000; jw tick | grep -q additionalContext \
 # Сабагент журнал сессии не ведёт.
 jw_usage 900000
 [ -z "$(jw tick ',"agent_id":"a1"')" ] || fail "journal_watch: напомнил сабагенту" ""
+
+# Окно задано — напоминание на 75% окна, даже если рост до порога не дошёл.
+# При окне 300K и записи на ~190K остальное до сжатия жило бы только в выжимке.
+rm -f "$JW/s/"*; mkdir -p "$JW/p/.claude"
+echo '{"autoCompactWindow": 300000}' > "$JW/p/.claude/settings.json"
+jw_usage 40000; jw tick >/dev/null
+touch -d '+2 min' "$JW/p/docs/journal/2026-01-01.md"
+jw_usage 190000; jw tick >/dev/null   # запись журнала на 190K — отметка
+jw_usage 220000; [ -z "$(jw tick)" ] || fail "journal_watch: напомнил до 75% окна" "220K из 300K"
+jw_usage 226000; jw tick | grep -q 'из окна автосжатия 300K' \
+  || fail "journal_watch: не напомнил на 75% окна" "$(jw_usage 226000; jw tick)"
+jw_usage 230000; [ -z "$(jw tick)" ] || fail "journal_watch: у окна напоминает на каждый вызов" ""
+# Повтор — раз в четверть остатка до окна (≈18K), а не четверть порога роста.
+jw_usage 246000; jw tick | grep -q 'из окна' \
+  || fail "journal_watch: у окна повтор не успевает до сжатия" ""
+# Записал за порогом — у окна больше не напоминает.
+touch -d '+3 min' "$JW/p/docs/journal/2026-01-01.md"
+jw_usage 250000; [ -z "$(jw tick)" ] || fail "journal_watch: запись у окна не засчитана" ""
+jw_usage 280000; [ -z "$(jw tick)" ] || fail "journal_watch: напомнил после записи у окна" ""
+# Переменная окружения сильнее настройки — как у Claude Code.
+rm -f "$JW/s/"*; jw_usage 10000; jw tick >/dev/null
+echo '{"autoCompactWindow": 300000, "env": {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "100000"}}' > "$JW/p/.claude/settings.json"
+jw_usage 80000; jw tick | grep -q 'из окна автосжатия 100K' \
+  || fail "journal_watch: переменная окна не перебила настройку" "$(jw_usage 80000; jw tick)"
+# Окно в пользовательских настройках тоже окно.
+rm -f "$JW/s/"* "$JW/p/.claude/settings.json"; jw_usage 10000; jw tick >/dev/null
+mkdir -p "$JW/home/.claude"; echo '{"autoCompactWindow": 100000}' > "$JW/home/.claude/settings.json"
+jw_usage 80000; jw tick | grep -q 'из окна автосжатия 100K' \
+  || fail "journal_watch: окно из пользовательских настроек не прочитано" ""
 
 jw postcompact ',"trigger":"auto","compact_summary":"ВЫЖИМКА-42"'
 grep -rqs 'ВЫЖИМКА-42' "$JW/p/.claude/logs/compact/" \
