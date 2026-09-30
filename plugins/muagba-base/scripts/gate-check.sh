@@ -23,6 +23,14 @@
 # ход отпускается без прогона. Изменения вне git (база, окружение, файлы
 # из .gitignore) отпечаток не видит. MUAGBA_GATE_ALWAYS=1 — проверять
 # всегда.
+#
+# Проверка ограничена по времени самим гейтом: MUAGBA_GATE_TIMEOUT секунд
+# (по умолчанию 1500), с запасом до тайм-аута хука в hooks.json (1800).
+# Хук, оборванный Claude Code по тайм-ауту, агента молча отпускает — так
+# у narta гейт исполнителя не работал вовсе: check.sh шёл 13–17 минут при
+# тайм-ауте хука 600 с. Не уложилась — ход отпускается (держать медленную,
+# но, может быть, зелёную проверку значит крутить агента до предела в 8
+# блокировок), но человек видит предупреждение, а журнал — decision=timeout.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -56,8 +64,35 @@ if [ -n "$KEY" ] && [ "$(cat "$GREEN" 2>/dev/null)" = "$KEY" ]; then
   exit 0
 fi
 
-OUTPUT=$(cd "$WORK" && bash "$CHECK" 2>&1)
+# Своя отсечка по времени — python, а не coreutils timeout: его нет на
+# macOS. Проверка идёт в своей группе процессов и убивается целиком:
+# pytest и браузер e2e иначе переживают check.sh.
+OUTPUT=$(cd "$WORK" && python3 -c '
+import os, signal, subprocess, sys
+p = subprocess.Popen(["bash", sys.argv[2]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                     start_new_session=True)
+try:
+    out, _ = p.communicate(timeout=float(sys.argv[1]))
+except subprocess.TimeoutExpired:
+    os.killpg(p.pid, signal.SIGKILL)
+    out, _ = p.communicate()
+    sys.stdout.buffer.write(out)
+    sys.exit(124)
+sys.stdout.buffer.write(out)
+sys.exit(p.returncode)' "${MUAGBA_GATE_TIMEOUT:-1500}" "$CHECK")
 STATUS=$?
+if [ $STATUS -eq 124 ]; then
+  [ -n "$GREEN" ] && rm -f "$GREEN" 2>/dev/null
+  python3 -c '
+import json, sys
+print(json.dumps({"systemMessage":
+    f"Внимание: гейт хода не дождался .claude/check.sh — не уложился в {sys.argv[1]} с. "
+    "Зелёная ли проверка, неизвестно: ход отпущен без неё. Ускорьте check.sh "
+    "или поднимите MUAGBA_GATE_TIMEOUT (и timeout хука)."}, ensure_ascii=False))' \
+    "${MUAGBA_GATE_TIMEOUT:-1500}"
+  log_event gate decision=timeout limit_s="${MUAGBA_GATE_TIMEOUT:-1500}"
+  exit 0
+fi
 if [ $STATUS -eq 0 ]; then
   # Запоминаем, только если проверка сама не поменяла дерево: иначе
   # зелёным оказалось бы состояние, которое она не проверяла.

@@ -63,7 +63,7 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/gate-check.sh\"",
-            "timeout": 600,
+            "timeout": 1800,
             "statusMessage": "Гейт: прогон проверки проекта..."
           }
         ]
@@ -129,7 +129,7 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/gate-check.sh\"",
-            "timeout": 600,
+            "timeout": 1800,
             "statusMessage": "Гейт исполнителя: прогон проверки проекта..."
           }
         ]

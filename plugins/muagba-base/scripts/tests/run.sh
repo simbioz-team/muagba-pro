@@ -759,6 +759,29 @@ echo unformatted > "$GC/f.txt"; gc >/dev/null
 [ "$(runs)" = 9 ] || fail "gate-check: состояние до починки проверкой принято за проверенное" "$(runs)"
 rm -rf "$GC" "$GO"
 
+# --- gate-check: проверка, не уложившаяся во время ------------------------
+# Хук, оборванный Claude Code по тайм-ауту, агента молча отпускает: у narta
+# check.sh шёл 13–17 мин при тайм-ауте 600 с, и гейт исполнителя не работал.
+# Гейт отсекает сам, раньше хука, и говорит об этом человеку.
+GS=$(mktemp -d); GSO=$(mktemp -d); mkdir -p "$GS/.claude/logs"
+printf '#!/usr/bin/env bash\nsleep 3\ntouch "%s/finished"\nexit 1\n' "$GSO" > "$GS/.claude/check.sh"; chmod +x "$GS/.claude/check.sh"
+OUT=$(printf '{"hook_event_name":"Stop","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' "$GS" \
+  | CLAUDE_PROJECT_DIR="$GS" MUAGBA_GATE_TIMEOUT=1 bash "$SCRIPTS/gate-check.sh" 2>/dev/null); CODE=$?
+[ "$CODE" = 0 ] || fail "gate-check: проверка сверх времени держит ход" "код $CODE"
+printf '%s' "$OUT" | grep -q 'systemMessage.*не уложился в 1 с' \
+  || fail "gate-check: превышение времени прошло молча" "$OUT"
+grep -q '"decision": "timeout"' "$GS/.claude/logs/agents.jsonl" \
+  || fail "gate-check: превышение времени не записано в журнал" "$(cat "$GS/.claude/logs/agents.jsonl")"
+sleep 4
+[ -e "$GSO/finished" ] && fail "gate-check: проверка сверх времени не убита — работает дальше" ""
+python3 - "$SCRIPTS/../hooks/hooks.json" <<'PY' || fail "hooks.json: тайм-аут хука гейта не больше отсечки гейта (1500 с)" ""
+import json, sys
+d = json.load(open(sys.argv[1]))
+ts = [h["timeout"] for gs in d["hooks"].values() for g in gs for h in g["hooks"] if "gate-check" in h["command"]]
+assert ts and all(t > 1500 for t in ts), ts
+PY
+rm -rf "$GS" "$GSO"
+
 # --- журнал: ходы, красный гейт, запреты хуков ------------------------------
 # Пишется только в проект, который завёл .claude/logs/; текста команды в нём
 # нет — только класс и шаблон пути.
