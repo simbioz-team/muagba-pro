@@ -31,6 +31,11 @@
 # тайм-ауте хука 600 с. Не уложилась — ход отпускается (держать медленную,
 # но, может быть, зелёную проверку значит крутить агента до предела в 8
 # блокировок), но человек видит предупреждение, а журнал — decision=timeout.
+#
+# Проверка знает, кто её вызвал: MUAGBA_GATE_EVENT=Stop|SubagentStop. Проект
+# может в ходе координатора гонять только быстрое (см. каркас check.sh).
+# Отпечаток поэтому свой на каждое событие: зелёное быстрое не засчитывается
+# сдаче исполнителя.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -59,6 +64,7 @@ GREEN=$(git -C "$WORK" rev-parse --git-path muagba-gate-green 2>/dev/null)
 case "$GREEN" in ''|/*) ;; *) GREEN="$WORK/$GREEN" ;; esac
 KEY=""
 [ -n "$GREEN" ] && [ -z "${MUAGBA_GATE_ALWAYS:-}" ] && KEY=$(python3 "$KEYPY" key "$WORK" 2>/dev/null)
+[ -n "$KEY" ] && KEY="$KEY:$EVENT"
 if [ -n "$KEY" ] && [ "$(cat "$GREEN" 2>/dev/null)" = "$KEY" ]; then
   log_event gate decision=cached
   exit 0
@@ -67,7 +73,7 @@ fi
 # Своя отсечка по времени — python, а не coreutils timeout: его нет на
 # macOS. Проверка идёт в своей группе процессов и убивается целиком:
 # pytest и браузер e2e иначе переживают check.sh.
-OUTPUT=$(cd "$WORK" && python3 -c '
+OUTPUT=$(cd "$WORK" && MUAGBA_GATE_EVENT="$EVENT" python3 -c '
 import os, signal, subprocess, sys
 p = subprocess.Popen(["bash", sys.argv[2]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                      start_new_session=True)
@@ -96,7 +102,7 @@ fi
 if [ $STATUS -eq 0 ]; then
   # Запоминаем, только если проверка сама не поменяла дерево: иначе
   # зелёным оказалось бы состояние, которое она не проверяла.
-  if [ -n "$KEY" ] && [ "$(python3 "$KEYPY" key "$WORK" 2>/dev/null)" = "$KEY" ]; then
+  if [ -n "$KEY" ] && [ "$(python3 "$KEYPY" key "$WORK" 2>/dev/null):$EVENT" = "$KEY" ]; then
     printf '%s' "$KEY" > "$GREEN" 2>/dev/null
   fi
   exit 0

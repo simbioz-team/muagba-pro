@@ -757,6 +757,22 @@ echo unformatted > "$GC/f.txt"; gc >/dev/null
 [ "$(cat "$GC/f.txt")" = formatted ] || fail "gate-check: тестовый форматтер не сработал" ""
 echo unformatted > "$GC/f.txt"; gc >/dev/null
 [ "$(runs)" = 9 ] || fail "gate-check: состояние до починки проверкой принято за проверенное" "$(runs)"
+# Проверка знает, кто её вызвал, и отпечаток у каждого события свой:
+# быстрое зелёное хода координатора не засчитывается сдаче исполнителя.
+rm -f "$GC/f.txt.bak"; cat > "$GC/.claude/check.sh" <<SH
+#!/usr/bin/env bash
+echo run >> "$GO/count"
+echo "\${MUAGBA_GATE_EVENT:-нет}" >> "$GO/events"
+exit 0
+SH
+git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm c2
+gc >/dev/null; gc >/dev/null
+[ "$(tail -1 "$GO/events")" = Stop ] || fail "gate-check: проверка не знает, что её вызвал ход" "$(cat "$GO/events")"
+[ "$(wc -l < "$GO/events" | tr -d ' ')" = 1 ] || fail "gate-check: ход координатора на том же дереве проверен дважды" "$(cat "$GO/events")"
+printf '{"hook_event_name":"SubagentStop","agent_type":"implementer","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' "$GC" \
+  | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
+[ "$(tail -1 "$GO/events")" = SubagentStop ] \
+  || fail "gate-check: сдача исполнителя засчитана по зелёному ходу координатора" "$(cat "$GO/events")"
 rm -rf "$GC" "$GO"
 
 # --- gate-check: проверка, не уложившаяся во время ------------------------
