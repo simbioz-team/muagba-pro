@@ -708,6 +708,57 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$GT/.claude/check.sh"
 [ "$(gate Stop '' 'Готово.')" = "0|" ] || fail "gate-check: зелёная проверка держит ход" ""
 rm -rf "$GT"
 
+# --- gate-check: уже проверенное зелёным не проверяется заново -------------
+# У narta за этап 1.4 гейт гонял check.sh 131 раз (651 мин), 130 зелёных, и в
+# сотне ходов код перед этим не менялся. Счётчик прогонов — вне дерева.
+GC=$(mktemp -d); GO=$(mktemp -d); mkdir -p "$GC/.claude/logs"; git -C "$GC" init -q
+cat > "$GC/.claude/check.sh" <<SH
+#!/usr/bin/env bash
+echo run >> "$GO/count"
+[ -f bad.txt ] && exit 1
+# «Форматтер»: чинит файл и выходит зелёным.
+grep -q unformatted f.txt 2>/dev/null && echo formatted > f.txt
+exit 0
+SH
+chmod +x "$GC/.claude/check.sh"; echo a > "$GC/f.txt"
+git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm init
+gc() {  # [env] → код гейта Stop в дереве GC
+  printf '{"hook_event_name":"Stop","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' "$GC" \
+    | env CLAUDE_PROJECT_DIR="$GC" "$@" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+runs() { wc -l < "$GO/count" | tr -d ' '; }
+gc >/dev/null; [ "$(runs)" = 1 ] || fail "gate-check: первый ход не проверен" "$(runs)"
+gc >/dev/null; [ "$(runs)" = 1 ] || fail "gate-check: неизменное дерево проверено заново" "$(runs)"
+grep -q '"decision": "cached"' "$GC/.claude/logs/agents.jsonl" \
+  || fail "gate-check: пропуск по отпечатку не записан в журнал" "$(cat "$GC/.claude/logs/agents.jsonl")"
+# Журнал в .claude/logs/ не в .gitignore этого проекта — и всё равно не
+# меняет отпечаток; а сам отпечаток в рабочее дерево не ложится.
+[ -z "$(git -C "$GC" status --porcelain -- . ':(exclude).claude/logs')" ] \
+  || fail "gate-check: отпечаток лёг в рабочее дерево" "$(git -C "$GC" status --porcelain)"
+echo b > "$GC/f.txt"; gc >/dev/null
+[ "$(runs)" = 2 ] || fail "gate-check: правка отслеживаемого файла не проверена" "$(runs)"
+echo n > "$GC/new.txt"; gc >/dev/null
+[ "$(runs)" = 3 ] || fail "gate-check: новый файл не проверен" "$(runs)"
+echo n2 > "$GC/new.txt"; gc >/dev/null
+[ "$(runs)" = 4 ] || fail "gate-check: правка неотслеживаемого файла не проверена" "$(runs)"
+gc MUAGBA_GATE_ALWAYS=1 >/dev/null
+[ "$(runs)" = 5 ] || fail "gate-check: MUAGBA_GATE_ALWAYS не заставил проверить" "$(runs)"
+# Красный стирает запомненное: вернулись к проверенному зелёным дереву —
+# проверяется заново, а не отпускается по старому отпечатку.
+touch "$GC/bad.txt"; [ "$(gc)" = 2 ] || fail "gate-check: красный отпущен" ""
+rm "$GC/bad.txt"; gc >/dev/null
+[ "$(runs)" = 7 ] || fail "gate-check: после красного дерево не проверено заново" "$(runs)"
+# Предел, названный в описании: изменение вне git отпечаток не видит.
+touch "$GO/outside"; gc >/dev/null
+[ "$(runs)" = 7 ] || fail "gate-check: изменение вне дерева вдруг заметно — описание врёт" "$(runs)"
+# Проверка, сама поправившая дерево, исходное состояние зелёным не отмечает:
+# она прошла на том, что починила. Агент откатил починку — проверять заново.
+echo unformatted > "$GC/f.txt"; gc >/dev/null
+[ "$(cat "$GC/f.txt")" = formatted ] || fail "gate-check: тестовый форматтер не сработал" ""
+echo unformatted > "$GC/f.txt"; gc >/dev/null
+[ "$(runs)" = 9 ] || fail "gate-check: состояние до починки проверкой принято за проверенное" "$(runs)"
+rm -rf "$GC" "$GO"
+
 # --- журнал: ходы, красный гейт, запреты хуков ------------------------------
 # Пишется только в проект, который завёл .claude/logs/; текста команды в нём
 # нет — только класс и шаблон пути.

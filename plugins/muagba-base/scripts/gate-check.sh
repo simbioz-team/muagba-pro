@@ -14,6 +14,15 @@
 # спрашивающий человека, «готово» не докладывает — а держать его значит
 # заставить чинить вместо того, чтобы спросить. Красноту при этом не
 # прячем: человек получает предупреждение. Нашёл проект narta на Э5–Э7.
+#
+# Уже проверенное зелёным заново не проверяется. У координатора ход
+# кончается постоянно — отдал задачу и ждёт, прочитал, ответил человеку, —
+# и гейт гонял полный check.sh впустую: у narta за этап 1.4 это 131 прогон,
+# 651 минута, 130 зелёных. После зелёного прогона запоминается отпечаток
+# дерева (gate_key.py: HEAD, изменения, неотслеживаемые файлы); совпал —
+# ход отпускается без прогона. Изменения вне git (база, окружение, файлы
+# из .gitignore) отпечаток не видит. MUAGBA_GATE_ALWAYS=1 — проверять
+# всегда.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -35,9 +44,29 @@ WORK=$(work_dir)
 CHECK="$WORK/.claude/check.sh"
 [ -x "$CHECK" ] || exit 0
 
+KEYPY="$(dirname "${BASH_SOURCE[0]}")/gate_key.py"
+# Файл отпечатка — в каталоге git этого дерева, а не в рабочем дереве:
+# иначе он сам менял бы отпечаток. У рабочих деревьев git-path свой.
+GREEN=$(git -C "$WORK" rev-parse --git-path muagba-gate-green 2>/dev/null)
+case "$GREEN" in ''|/*) ;; *) GREEN="$WORK/$GREEN" ;; esac
+KEY=""
+[ -n "$GREEN" ] && [ -z "${MUAGBA_GATE_ALWAYS:-}" ] && KEY=$(python3 "$KEYPY" key "$WORK" 2>/dev/null)
+if [ -n "$KEY" ] && [ "$(cat "$GREEN" 2>/dev/null)" = "$KEY" ]; then
+  log_event gate decision=cached
+  exit 0
+fi
+
 OUTPUT=$(cd "$WORK" && bash "$CHECK" 2>&1)
 STATUS=$?
-[ $STATUS -eq 0 ] && exit 0
+if [ $STATUS -eq 0 ]; then
+  # Запоминаем, только если проверка сама не поменяла дерево: иначе
+  # зелёным оказалось бы состояние, которое она не проверяла.
+  if [ -n "$KEY" ] && [ "$(python3 "$KEYPY" key "$WORK" 2>/dev/null)" = "$KEY" ]; then
+    printf '%s' "$KEY" > "$GREEN" 2>/dev/null
+  fi
+  exit 0
+fi
+[ -n "$GREEN" ] && rm -f "$GREEN" 2>/dev/null
 
 # Где упало: последняя строка-заголовок уровня `==> …`, если check.sh их
 # печатает, иначе последняя непустая строка вывода. Повторяющаяся причина
