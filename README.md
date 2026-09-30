@@ -156,7 +156,7 @@ claude plugin update muagba-base@muagba-pro
 | `SessionStart` (startup, resume) | `version_check.py` | Загруженная версия плагина старше выпущенной или собрана не из тега выпуска — предупреждение человеку и агенту с командой обновления |
 | `SessionStart` (compact) | `reinject-invariants.sh` | Возвращает `.claude/invariants.md` в контекст после компакции |
 | `SessionStart` (compact) | `journal_watch.py reinject` | Называет последнюю запись журнала и велит перечитать её и продолжить |
-| `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` **проекта сессии** |
+| `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` **проекта сессии**; на `SubagentStop` — модель, effort, токены и время запуска из его стенограммы (накопительно) |
 
 В тот же журнал, если проект завёл `.claude/logs/`, хуки пишут ещё пять
 событий: `turn` — каждое закрытие хода (время, сессия, ветка); `gate` — гейт

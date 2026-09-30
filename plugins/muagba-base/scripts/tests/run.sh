@@ -775,6 +775,39 @@ detail "$AT" enforce.attribution | grep -q 'settings.local.json' \
   || fail "enforce.attribution: личное решение не найдено" "$(detail "$AT" enforce.attribution)"
 rm -rf "$AT"
 
+# --- log-agent: сводка стенограммы сабагента на SubagentStop ---------------
+# Модель, effort и токены запуска — в журнал: стенограммы живут 30 дней, а
+# выбирать модель под класс задачи можно только по накопленным данным.
+LA=$(mktemp -d); mkdir -p "$LA/p/.claude/logs"
+cat > "$LA/t.jsonl" <<'JL'
+{"type":"user","timestamp":"2026-09-30T10:00:00Z","message":{"role":"user","content":"задача"}}
+{"type":"assistant","timestamp":"2026-09-30T10:00:05Z","requestId":"r1","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"output_tokens":50}}}
+{"type":"assistant","timestamp":"2026-09-30T10:00:06Z","requestId":"r1","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"output_tokens":50}}}
+{"type":"assistant","timestamp":"2026-09-30T10:07:00Z","requestId":"r2","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":3000,"cache_creation_input_tokens":0,"output_tokens":70}}}
+JL
+la() {  # <событие> [лишние поля] → запуск хука
+  printf '{"hook_event_name":"%s","agent_id":"a1","agent_type":"muagba-base:implementer","session_id":"s","cwd":"%s"%s}' \
+    "$1" "$LA/p" "${2:-}" | CLAUDE_PROJECT_DIR="$LA/p" bash "$SCRIPTS/log-agent.sh"
+}
+la SubagentStop ",\"agent_transcript_path\":\"$LA/t.jsonl\""
+python3 - "$LA/p/.claude/logs/agents.jsonl" <<'PY' || fail "log-agent: сводка стенограммы неверна" "$(cat "$LA/p/.claude/logs/agents.jsonl")"
+import json, sys
+r = json.loads(open(sys.argv[1]).read().splitlines()[-1])
+# r1 записан дважды — один запрос; токены не удвоены
+assert (r["model"], r["effort"], r["requests"]) == ("claude-sonnet-5-5", "medium", 2), r
+assert (r["tok_in"], r["tok_cache_read"], r["tok_cache_write"], r["tok_out"]) == (15, 4000, 200, 120), r
+assert r["first_ts"] == "2026-09-30T10:00:00Z" and r["last_ts"] == "2026-09-30T10:07:00Z", r
+PY
+# Без стенограммы и на SubagentStart — запись о запуске всё равно есть, без сводки.
+la SubagentStop ",\"agent_transcript_path\":\"$LA/нет.jsonl\""
+la SubagentStart
+python3 - "$LA/p/.claude/logs/agents.jsonl" <<'PY' || fail "log-agent: без стенограммы запись потеряна или со сводкой" "$(cat "$LA/p/.claude/logs/agents.jsonl")"
+import json, sys
+rs = [json.loads(l) for l in open(sys.argv[1])]
+assert len(rs) == 3 and "model" not in rs[1] and "model" not in rs[2], rs
+PY
+rm -rf "$LA"
+
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
 OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q
