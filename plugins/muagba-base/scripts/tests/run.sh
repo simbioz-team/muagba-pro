@@ -840,6 +840,42 @@ printf '{"event": "SubagentStop", "agent_type": "x"}\n' >> "$J"
   || fail "observe.log: запуск агента в журнале не найден" "$(detail "$LG" observe.log)"
 rm -rf "$LG"
 
+# --- check.split: быстрый гейт хода — полная проверка перед слиянием ---------
+# ADR-0015: поделил гейт — CI на PR обязан гонять check.sh полностью.
+CS=$(mktemp -d); mkdir -p "$CS/.claude" "$CS/.github/workflows"; git -C "$CS" init -q
+printf '#!/usr/bin/env bash\nmake check\n' > "$CS/.claude/check.sh"
+detail "$CS" check.split | grep -q 'полную проверку' \
+  || fail "check.split: неподелённый гейт не принят" "$(detail "$CS" check.split)"
+printf '#!/usr/bin/env bash\n# пример: MUAGBA_GATE_EVENT=Stop\nmake check\n' > "$CS/.claude/check.sh"
+detail "$CS" check.split | grep -q 'полную проверку' \
+  || fail "check.split: пример в комментарии принят за деление" "$(detail "$CS" check.split)"
+printf '#!/usr/bin/env bash\n[ -n "${MUAGBA_GATE_EVENT:-}" ] && { make lint; exit 0; }\nmake check\n' > "$CS/.claude/check.sh"
+detail "$CS" check.split | grep -q 'CI не вызывает' \
+  || fail "check.split: быстрый гейт без CI принят" "$(detail "$CS" check.split)"
+printf 'on:\n  push:\n    branches: [main]\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' > "$CS/.github/workflows/ci.yml"
+detail "$CS" check.split | grep -q 'без триггера pull_request' \
+  || fail "check.split: CI только на push принят за проверку перед слиянием" "$(detail "$CS" check.split)"
+printf 'on:\n  pull_request:\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n        env:\n          MUAGBA_GATE_EVENT: Stop\n' > "$CS/.github/workflows/ci.yml"
+detail "$CS" check.split | grep -q 'задаёт MUAGBA_GATE_EVENT' \
+  || fail "check.split: CI с быстрой частью принят" "$(detail "$CS" check.split)"
+printf 'on:\n  push:\n    branches: [main]\n  pull_request:\njobs:\n  c:\n    steps:\n      - run: ./.claude/check.sh\n' > "$CS/.github/workflows/ci.yml"
+[ "$(verdict "$CS" check.split)" = ok ] || fail "check.split: CI на PR не засчитан" "$(detail "$CS" check.split)"
+rm -rf "$CS"
+
+# Каркас check.sh: гейт гоняет быструю цель, если она есть; иначе — полную.
+TC=$(mktemp -d); mkdir -p "$TC/.claude"
+cp "$SCRIPTS/../../../template/.claude/check.sh" "$SCRIPTS/../../../template/.claude/check-frames.py" "$TC/.claude/"
+printf 'check:\n\t@echo FULL\ncheck-quick:\n\t@echo QUICK\n' > "$TC/Makefile"
+OUT=$(cd "$TC" && MUAGBA_GATE_EVENT=Stop bash .claude/check.sh 2>&1)
+printf '%s' "$OUT" | grep -q QUICK && ! printf '%s' "$OUT" | grep -q FULL \
+  || fail "каркас check.sh: гейт не пошёл по быстрой части" "$OUT"
+OUT=$(cd "$TC" && bash .claude/check.sh 2>&1)
+printf '%s' "$OUT" | grep -q FULL || fail "каркас check.sh: без события не полная проверка" "$OUT"
+printf 'check:\n\t@echo FULL\n' > "$TC/Makefile"
+OUT=$(cd "$TC" && MUAGBA_GATE_EVENT=Stop bash .claude/check.sh 2>&1)
+printf '%s' "$OUT" | grep -q FULL || fail "каркас check.sh: без быстрой цели гейт ничего не проверил" "$OUT"
+rm -rf "$TC"
+
 # --- enforce.attribution: подпись агента — решение человека -----------------
 # Умолчание Claude Code — подписываться. Проба ловит отсутствие решения, а не
 # сам ответ: «подписывать» и «не подписывать» оба законны.

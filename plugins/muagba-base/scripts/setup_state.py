@@ -1004,6 +1004,41 @@ def pr_check_ci(c: Ctx) -> V:
                "арбитр обязан гонять ту же команду, иначе они разойдутся")
 
 
+def gate_split(c: Ctx) -> bool:
+    """check.sh различает гейт хода (`MUAGBA_GATE_EVENT`) — в коде, а не в
+    комментарии: каркас держит пример в комментарии, и это не деление."""
+    text = c.read(".claude/check.sh") or ""
+    code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    return "MUAGBA_GATE_EVENT" in code
+
+
+def pr_check_split(c: Ctx) -> V:
+    """Быстрый гейт хода подкреплён полной проверкой перед слиянием (ADR-0015).
+
+    Гейт, гоняющий только быстрые шаги, уже не доказывает, что тесты
+    зелёные. Доклад «готово» при упавшем тесте тогда ловит только полная
+    проверка перед слиянием — CI на PR той же командой. Без неё упавший
+    тест уходит в основную ветку.
+    """
+    if not gate_split(c):
+        return ok("гейт хода гоняет полную проверку")
+    files = c.glob(".github/workflows/*.yml") + c.glob(".github/workflows/*.yaml")
+    for wf in files:
+        text = wf.read_text(encoding="utf-8", errors="replace")
+        if "check.sh" not in yaml_run_commands(text):
+            continue
+        if "MUAGBA_GATE_EVENT" in text:
+            return bad(f"{wf.name} задаёт MUAGBA_GATE_EVENT — в CI идёт быстрая часть",
+                       "CI вызывает check.sh без MUAGBA_GATE_EVENT: там полная проверка")
+        trig = ci_triggers(text) or {}
+        if any(e in trig for e in ("pull_request", "pull_request_target")):
+            return ok(f"гейт быстрый; полная проверка — {wf.name} на pull_request")
+        return bad(f"гейт быстрый, а {wf.name} гоняет check.sh без триггера pull_request",
+                   "добавить pull_request в on: — полная проверка должна пройти до слияния")
+    return bad("гейт хода быстрый, а полной проверки перед слиянием нет: CI не вызывает check.sh",
+               "CI на pull_request с вызовом check.sh — или не делить гейт (ADR-0015)")
+
+
 # Хостинг, который умеет запускать рабочие процессы. Локальный bare-репозиторий
 # их не запускает, и требовать от него зелёный прогон — повторить ошибку,
 # которую только что чинили у защиты ветки: гейт, недостижимый для целого
@@ -1717,6 +1752,8 @@ PROBES = [
     Probe("check.green", "Э6", "проверка проходит", cost=EXPENSIVE, run=pr_check_green),
     Probe("check.ci", "Э6", "арбитр вызывает ту же команду",
           fills=("workflow CI", None), run=pr_check_ci),
+    Probe("check.split", "Э6", "быстрый гейт подкреплён полной проверкой",
+          fills=(".claude/check.sh", "развилка MUAGBA_GATE_EVENT"), run=pr_check_split),
     Probe("check.ladder", "Э6", "жёсткость гейта выбрана",
           fills=("docs/workflow.md", "Жёсткость гейта"), run=pr_check_ladder),
     Probe("check.ci-ran", "Э6", "беспристрастный прогон хоть раз состоялся",
