@@ -934,6 +934,47 @@ assert len(rs) == 3 and "model" not in rs[1] and "model" not in rs[2], rs
 PY
 rm -rf "$LA"
 
+# --- pipeline_queues: очереди конвейера по стенограмме координатора --------
+# Исполнитель готов → координатор поручил ревью → правки → слияние. Уведомление
+# о готовности, пока координатор занят, лежит в очереди: «готово» — постановка.
+PQ=$(mktemp -d)
+python3 - "$PQ/s.jsonl" <<'PY'
+import json, sys
+L = []
+def at(m): return f"2026-10-01T10:{m:02d}:00Z"
+def use(m, uid, name, inp): L.append({"type": "assistant", "timestamp": at(m), "message": {"content": [{"type": "tool_use", "id": uid, "name": name, "input": inp}]}})
+def res(m, uid, extra=None, content=""): L.append({"type": "user", "timestamp": at(m), "message": {"content": [{"type": "tool_result", "tool_use_id": uid, "content": content}]}, **({"toolUseResult": extra} if extra else {})})
+def note(aid): return f"<task-notification>\n<task-id>{aid}</task-id>\n<status>completed</status>\n</task-notification>"
+use(0, "u1", "Agent", {"description": "T001 исполнитель", "prompt": "задача", "subagent_type": "muagba-base:implementer"})
+res(0, "u1", {"agentId": "A1", "isAsync": True, "status": "async_launched"})
+L.append({"type": "queue-operation", "operation": "enqueue", "timestamp": at(10), "content": note("A1")})
+L.append({"type": "attachment", "timestamp": at(12), "attachment": {"type": "queued_command", "prompt": note("A1")}})
+use(13, "q1", "AskUserQuestion", {"questions": []})
+use(15, "u2", "Agent", {"description": "Ревью T001", "prompt": "проверь", "subagent_type": "muagba-base:reviewer"})
+res(15, "u2", {"agentId": "A2", "isAsync": True, "status": "async_launched"})
+L.append({"type": "user", "timestamp": at(20), "message": {"content": note("A2")}})
+use(25, "s1", "SendMessage", {"to": "A1", "message": "поправь"})
+L.append({"type": "queue-operation", "operation": "enqueue", "timestamp": at(30), "content": note("A1")})
+use(31, "b1", "Bash", {"command": 'gh pr create --base develop --title "T001: схема"'})
+res(31, "b1", content="https://github.com/o/r/pull/7")
+use(40, "b2", "Bash", {"command": "gh pr merge 7 --merge"})
+open(sys.argv[1], "w").write("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in L))
+PY
+OUT=$(python3 "$SCRIPTS/pipeline_queues.py" --transcripts "$PQ" --csv "$PQ/out" 2>&1)
+python3 - "$PQ/out" <<'PY' || fail "pipeline_queues: цепочка задачи посчитана неверно" "$OUT"
+import csv, sys
+w = [(r["role_or_after"], float(r["min"])) for r in csv.DictReader(open(sys.argv[1] + "/pipeline-work.csv"))]
+q = [(r["role_or_after"], r["next"], float(r["min"])) for r in csv.DictReader(open(sys.argv[1] + "/pipeline-queue.csv"))]
+assert w == [("muagba-base:implementer", 10.0), ("muagba-base:reviewer", 5.0), ("muagba-base:implementer", 5.0)], w
+assert q == [("muagba-base:implementer", "muagba-base:reviewer", 5.0),
+             ("muagba-base:reviewer", "правки: muagba-base:implementer", 5.0),
+             ("muagba-base:implementer", "слияние", 10.0)], q
+PY
+printf '%s' "$OUT" | grep -q 'AskUserQuestion ×1' || fail "pipeline_queues: вопрос владельцу в очереди не показан" "$OUT"
+printf '%s' "$OUT" | grep -q '| T001 | muagba-base:implementer | muagba-base:reviewer | 5.0 | 2.0 |' \
+  || fail "pipeline_queues: ожидание доставки уведомления не посчитано" "$OUT"
+rm -rf "$PQ"
+
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
 OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q
