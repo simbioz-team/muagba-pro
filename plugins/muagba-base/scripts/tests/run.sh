@@ -1032,6 +1032,29 @@ python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Удале�
 (cd "$NM/l" && echo y | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --resume нетакой >/dev/null 2>&1); CODE=$?
 [ "$CODE" = 1 ] && [ ! -s "$NM/calls" ] || fail "лаунчер: несуществующая сессия не остановила запуск" "$(cat "$NM/calls")"
 
+# Из сессии (/muagba-base:night): --yes --bg — без терминала, ночь в фоне.
+: > "$NM/calls"; mv "$NM/l/.claude/night/approved.json" "$NM/appr.bak"
+(cd "$NM/l" && HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --yes --bg --resume abc </dev/null >/dev/null 2>&1); CODE=$?
+[ "$CODE" = 1 ] && [ ! -s "$NM/calls" ] || fail "лаунчер --yes: ночь без подготовки" "$(cat "$NM/calls")"
+mv "$NM/appr.bak" "$NM/l/.claude/night/approved.json"
+OUT=$(cd "$NM/l" && HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --yes --bg --resume abc </dev/null 2>&1); CODE=$?
+[ "$CODE" = 0 ] && grep -q '^night|--bg --permission-mode auto --settings .* --resume abc Ночь началась' "$NM/calls" \
+  || fail "лаунчер --bg: ночь не в фоне или без поручения" "$(cat "$NM/calls"; echo; echo "$OUT")"
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d['env']['MUAGBA_MODE']=='night'" "$NM/merged.json" \
+  || fail "лаунчер: пометка ночи не в настройках сессии" "$(cat "$NM/merged.json")"
+printf '%s' "$OUT" | grep -q 'закройте' || fail "лаунчер --bg: нет напоминания закрыть дневную сессию" "$OUT"
+
+# Поиск лаунчера без привязки к каталогу: из основного checkout — в дереве.
+mkdir -p "$NM/m"; git -C "$NM/m" init -q; git -C "$NM/m" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i
+git -C "$NM/m" worktree add -q "$NM/m/.claude/worktrees/coord" 2>/dev/null
+[ "$(python3 "$SCRIPTS/night_locate.py" "$NM/m" | python3 -c 'import json,sys; print(json.load(sys.stdin)["launcher"])')" = None ] \
+  || fail "night_locate: нашёл лаунчер там, где его нет" ""
+mkdir -p "$NM/m/.claude/worktrees/coord/.claude/night"
+cp "$TPL/claude-night" "$NM/m/.claude/worktrees/coord/.claude/"; cp "$TPL/night/settings.json" "$NM/m/.claude/worktrees/coord/.claude/night/"
+printf '{"date":"%s"}' "$(date +%F)" > "$NM/m/.claude/worktrees/coord/.claude/night/approved.json"
+python3 "$SCRIPTS/night_locate.py" "$NM/m" | grep -q '"launcher": "'"$NM"'/m/.claude/worktrees/coord/.claude/claude-night".*"approved_today": true' \
+  || fail "night_locate: лаунчер в дереве координатора не найден из основного checkout" "$(python3 "$SCRIPTS/night_locate.py" "$NM/m")"
+
 # Старт сессии: подготовка есть, а ночного режима нет — предупредить.
 mkdir -p "$NM/s/.claude/night"; git -C "$NM/s" init -q
 ns() { printf '{"cwd":"%s"}' "$NM/s" | env "$@" python3 "$SCRIPTS/night_status.py"; }

@@ -14,6 +14,13 @@
 #    Что всё же дошло бы до человека, хук базы откладывает в
 #    .claude/logs/morning.md.
 #
+# Из сессии Claude ночь запускает команда /muagba-base:night: подготовку и
+# подтверждение она проводит в самой сессии, а лаунчер зовёт с
+#   --yes  подтверждение уже дано (без утверждённого на сегодня — отказ:
+#          подготовка требует человека и терминала);
+#   --bg   ночь — фоновой сессией Claude (claude --bg): терминал не нужен,
+#          смотреть — claude attach <id>.
+#
 # Каталог запуска. С --resume <сессия> ночь идёт в каталоге этой сессии —
 # Claude продолжает сессию только оттуда, где она начата, а лаунчер может
 # лежать в рабочем дереве. Так у narta ночь не началась вовсе: лаунчер ушёл в
@@ -26,6 +33,17 @@ BASE="$ROOT/.claude/night/settings.json"
 APPROVED="$ROOT/.claude/night/approved.json"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 TODAY=$(date +%F)
+
+# Свои флаги лаунчера; остальное уходит claude как есть.
+YES=""; BG=""; ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --yes) YES=1 ;;
+    --bg) BG=1 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 # Каталог сессии из --resume: первая запись стенограммы с полем cwd.
 RUN_DIR="$PWD"
@@ -66,6 +84,10 @@ approved_today() {
 
 [ -f "$BASE" ] || { echo "claude-night: нет $BASE — ночной режим не настроен (вопрос В9.11)." >&2; exit 1; }
 
+if ! approved_today && [ -n "$YES" ]; then
+  echo "claude-night: разрешения на сегодня не утверждены — сначала подготовка (/muagba-base:night проводит её в сессии)." >&2
+  exit 1
+fi
 if ! approved_today; then
   cat <<MSG
 claude-night: подготовки к ночи сегодня не было — сначала она, в обычном режиме, с вами.
@@ -82,9 +104,13 @@ MSG
 fi
 
 MERGED=$(mktemp "${TMPDIR:-/tmp}/claude-night.XXXXXX.json")
-python3 - "$BASE" "$APPROVED" "$MERGED" <<'PY' || exit 1
+MUAGBA_NIGHT_START=$(date -Is)
+python3 - "$BASE" "$APPROVED" "$MERGED" "$MUAGBA_NIGHT_START" <<'PY' || exit 1
 import json, sys
 base, appr, out = (json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3])
+# Пометка ночи — и в настройках сессии: фоновая сессия (claude --bg) идёт от
+# демона Claude Code, и окружение лаунчера до неё может не дойти.
+base.setdefault("env", {}).update({"MUAGBA_MODE": "night", "MUAGBA_NIGHT_START": sys.argv[4]})
 am = base.setdefault("autoMode", {})
 am["allow"] = list(am.get("allow") or []) + list(appr.get("allow_rules") or [])
 perm = base.setdefault("permissions", {})
@@ -101,10 +127,19 @@ for t in appr.get("tasks") or []:
     print("  ▸ задача: " + t)
 PY
 
-read -r -p "Запустить ночь с этими разрешениями? [y/N] " ANSWER
-[ "$ANSWER" = y ] || [ "$ANSWER" = Y ] || { echo "Отменено."; exit 1; }
+if [ -z "$YES" ]; then
+  read -r -p "Запустить ночь с этими разрешениями? [y/N] " ANSWER
+  [ "$ANSWER" = y ] || [ "$ANSWER" = Y ] || { echo "Отменено."; exit 1; }
+fi
 
 export MUAGBA_MODE=night
 export MUAGBA_NIGHT_START
-MUAGBA_NIGHT_START=$(date -Is)
-cd "$RUN_DIR" && exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"
+cd "$RUN_DIR" || exit 1
+if [ -n "$BG" ]; then
+  # Фоновая сессия начинает с поручения, иначе она просто ждала бы ввода.
+  PROMPT="Ночь началась (ночной режим, ADR-0016). Работай по плану из ${APPROVED}: задачи по порядку, утверждённые разрешения. Упёрся в человека — запиши и бери следующую независимую задачу. Утром — /muagba-base:night-report."
+  "$CLAUDE_BIN" --bg --permission-mode auto --settings "$MERGED" "$@" "$PROMPT" || exit 1
+  echo "claude-night: ночь запущена в фоне. Смотреть: claude agents, claude attach <id>. Дневную сессию координатора закройте — иначе их будет две."
+  exit 0
+fi
+exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"
