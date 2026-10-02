@@ -1187,6 +1187,77 @@ mkdir -p "$TS/.claude/night"; echo '{}' > "$TS/.claude/night/settings.json"; ts 
 [ -z "$(printf '{"cwd":"%s"}' "$REPO" | python3 "$SCRIPTS/template_sync.py" --force)" ] || fail "template_sync: тронул репозиторий базы" ""
 rm -rf "$TS"
 
+# --- frame_lock: сторож по последствиям и окно «снять — применить — вернуть» --
+FL=$(mktemp -d); mkdir -p "$FL/.claude"; git -C "$FL" init -q
+printf '# Проект\n\n- своё правило\n' > "$FL/AGENTS.md"
+cp "$SCRIPTS/../sync/files/.claude/check-frames.py" "$FL/.claude/check-frames.py"
+printf '{"cwd":"%s"}' "$FL" | python3 "$SCRIPTS/template_sync.py" >/dev/null
+fg() { printf '{"cwd":"%s","tool_name":"Bash"}' "$FL" | python3 "$SCRIPTS/frame_lock.py" guard; }
+fl() { python3 "$SCRIPTS/frame_lock.py" "$@" --cwd "$FL"; }
+SYNCD="$SCRIPTS/../sync"
+[ -z "$(fg)" ] || fail "frame_lock: сторож шумит на нетронутом проекте" "$(fg)"
+[ ! -e "$(git -C "$FL" rev-parse --absolute-git-dir)/muagba-frame-window" ] || fail "frame_lock: окно обновления не закрыто после синхронизации" ""
+# Правка агента в обход — любым путём — откатывается: и файл, и блок.
+echo '# агент' >> "$FL/.claude/check-frames.py"
+python3 - "$FL/AGENTS.md" <<'PY2'
+import sys; p=sys.argv[1]; s=open(p).read(); open(p,"w").write(s.replace("### Чего не делать", "### Можно всё"))
+PY2
+OUT=$(fg)
+cmp -s "$FL/.claude/check-frames.py" "$SYNCD/files/.claude/check-frames.py" || fail "frame_lock: изменённый файл базы не возвращён" "$OUT"
+grep -q 'Можно всё' "$FL/AGENTS.md" && fail "frame_lock: правленый блок базы не возвращён" "$OUT"
+grep -q 'своё правило' "$FL/AGENTS.md" || fail "frame_lock: при возврате блока задето своё" ""
+printf '%s' "$OUT" | grep -q '"decision": "block"' || fail "frame_lock: агенту не сказано, что правка откатана" "$OUT"
+# Удалённые метки — блок возвращается; удалённый файл-механизм — тоже.
+python3 - "$FL/AGENTS.md" <<'PY2'
+import sys; p=sys.argv[1]; s=open(p).read(); open(p,"w").write(s[:s.index("<!-- muagba:begin")])
+PY2
+rm "$FL/.claude/check-frames.py"; fg >/dev/null
+grep -q 'muagba:end base-rules' "$FL/AGENTS.md" && [ -f "$FL/.claude/check-frames.py" ] || fail "frame_lock: удалённое не возвращено" ""
+# Окно обновления, чей процесс умер (kill -9), окном не считается.
+printf '{"by":"sync","pid":999999999}' > "$(git -C "$FL" rev-parse --absolute-git-dir)/muagba-frame-window"
+echo '# агент' >> "$FL/.claude/check-frames.py"; fg >/dev/null
+cmp -s "$FL/.claude/check-frames.py" "$SYNCD/files/.claude/check-frames.py" || fail "frame_lock: мёртвое окно обновления выключило сторожа" ""
+# Окно закрывается и при сбое внутри обновления.
+python3 - "$SCRIPTS" "$FL" <<'PY2'
+import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); import frame_lock as f
+try:
+    with f.update_window(Path(sys.argv[2])): raise RuntimeError
+except RuntimeError: pass
+assert f.window(Path(sys.argv[2])) is None, "окно осталось"
+PY2
+[ $? -eq 0 ] || fail "frame_lock: окно не закрыто после сбоя" ""
+# Окно человека: сторож молчит; lock закрепляет правку за проектом.
+fl unlock >/dev/null
+echo '# человек' >> "$FL/.claude/check-frames.py"; cp "$FL/.claude/check-frames.py" "$FL/cf.human"
+[ -z "$(fg)" ] && cmp -s "$FL/.claude/check-frames.py" "$FL/cf.human" || fail "frame_lock: сторож тронул правку в окне человека" ""
+OUT=$(printf '{"cwd":"%s"}' "$FL" | python3 "$SCRIPTS/template_sync.py" --force)
+printf '%s' "$OUT" | grep -q 'не возвращена' || fail "frame_lock: синхронизация не предупредила об открытом окне" "$OUT"
+fl lock | grep -q 'Закреплено' || fail "frame_lock: lock не закрепил правку человека" ""
+fg >/dev/null; cmp -s "$FL/.claude/check-frames.py" "$FL/cf.human" || fail "frame_lock: сторож откатил закреплённое за проектом" ""
+OUT=$(printf '{"cwd":"%s"}' "$FL" | python3 "$SCRIPTS/template_sync.py" --force)
+cmp -s "$FL/.claude/check-frames.py" "$FL/cf.human" && printf '%s' "$OUT" | grep -q 'закреплён за проектом' \
+  || fail "frame_lock: закреплённое перезаписано обновлением или не названо" "$OUT"
+# Вернул новую версию на место — файл снова базы.
+cp "$SYNCD/files/.claude/check-frames.py" "$FL/.claude/check-frames.py"
+printf '{"cwd":"%s"}' "$FL" | python3 "$SCRIPTS/template_sync.py" --force >/dev/null
+grep -q '"held"' "$FL/.claude/muagba-sync.json" && fail "frame_lock: возвращённый файл остался закреплённым" ""
+# База записала старую версию, проект её поменял, плагин уже новее — это
+# конфликт для человека, не дело сторожа.
+python3 - "$FL" <<'PY2'
+import json, sys; p = sys.argv[1] + "/.claude/muagba-sync.json"; st = json.load(open(p))
+st["written"][".claude/check-frames.py"] = "0" * 64; json.dump(st, open(p, "w"))
+PY2
+echo '# проект' >> "$FL/.claude/check-frames.py"; cp "$FL/.claude/check-frames.py" "$FL/cf.proj"
+fg >/dev/null; cmp -s "$FL/.claude/check-frames.py" "$FL/cf.proj" || fail "frame_lock: сторож откатил конфликтный файл, который база не писала" ""
+# Снять блокировку агенту нельзя; посмотреть — можно.
+fb() { printf '{"tool_input":{"command":%s},"cwd":"%s"}' "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$FL" \
+  | bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1; echo $?; }
+[ "$(fb "python3 ~/.claude/plugins/x/scripts/frame_lock.py unlock")" = 2 ] || fail "frame_lock: агент снял блокировку" ""
+[ "$(fb "python3 frame_lock.py status")" = 0 ] || fail "frame_lock: запрещён просмотр состояния" ""
+# Репозиторий базы: template/ — исходник, сторож не трогает.
+[ -z "$(printf '{"cwd":"%s"}' "$REPO" | python3 "$SCRIPTS/frame_lock.py" guard)" ] || fail "frame_lock: тронул репозиторий базы" ""
+rm -rf "$FL"
+
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
 OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q

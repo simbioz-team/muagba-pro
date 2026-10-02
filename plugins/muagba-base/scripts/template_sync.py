@@ -32,6 +32,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from frame_lock import (block_bounds, begin_line, is_base_repo, project_root,  # noqa: E402
+                        update_window, window)
+
 PLUGIN = Path(__file__).resolve().parent.parent
 SYNC = PLUGIN / "sync"
 STATE = ".claude/muagba-sync.json"
@@ -50,23 +54,6 @@ def load(p: Path) -> dict:
         return json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-
-
-def block_bounds(text: str, bid: str) -> tuple[int, int] | None:
-    """(начало содержимого, конец содержимого) блока или None."""
-    b = text.find(f"<!-- muagba:begin {bid}")
-    if b < 0:
-        return None
-    start = text.find("\n", b)
-    end = text.find(f"<!-- muagba:end {bid} -->", start)
-    if start < 0 or end < 0:
-        return None
-    return start + 1, end
-
-
-def begin_line(bid: str) -> str:
-    return (f"<!-- muagba:begin {bid} — блок обновляет плагин muagba-base; "
-            f"правки сюда не вносить, своё — выше -->\n")
 
 
 # --------------------------------------------------------------------------
@@ -121,11 +108,6 @@ def build(repo: Path, write: bool) -> list[str]:
 # --------------------------------------------------------------------------
 # Синхронизация проекта
 # --------------------------------------------------------------------------
-def project_root(cwd: Path) -> Path:
-    r = git(cwd, "rev-parse", "--show-toplevel")
-    return Path(r.stdout.decode().strip()) if r.returncode == 0 and r.stdout.strip() else cwd
-
-
 def sync(root: Path, version: str, force: bool = False) -> tuple[list[str], list[str]]:
     """(обновлено, конфликты)."""
     man = load(SYNC / "manifest.json")
@@ -135,7 +117,21 @@ def sync(root: Path, version: str, force: bool = False) -> tuple[list[str], list
     if st.get("version") == version and not force:
         return [], []
     written = dict(st.get("written") or {})
+    held = dict(st.get("held") or {})
     updated, conflicts = [], []
+    # Снять блокировку → применить → вернуть: сторож frame_lock.py не трогает
+    # открытое окно, а закрывается оно при любом выходе.
+    with update_window(root):
+        _apply(root, man, hist, written, held, updated, conflicts)
+    st = {"version": version, "written": written}
+    if held:
+        st["held"] = held
+    statep.parent.mkdir(parents=True, exist_ok=True)
+    statep.write_text(json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return updated, conflicts
+
+
+def _apply(root, man, hist, written, held, updated, conflicts) -> None:
     for f in man.get("files", []):
         dst = root / f["path"]
         new = (SYNC / "files" / f["path"]).read_bytes()
@@ -148,6 +144,11 @@ def sync(root: Path, version: str, force: bool = False) -> tuple[list[str], list
             cur = dst.read_bytes()
             if cur == new:
                 written[f["path"]] = sha(new)
+                held.pop(f["path"], None)
+                continue
+            if f["path"] in held:
+                conflicts.append(f"{f['path']} — закреплён за проектом; новая версия: {SYNC / 'files' / f['path']} "
+                                 "(скопируйте её на место — файл вернётся базе)")
                 continue
             if sha(cur) not in set(hist.get(f["path"], [])) | {written.get(f["path"])}:
                 conflicts.append(f"{f['path']} — изменён в проекте; новая версия: {SYNC / 'files' / f['path']}")
@@ -176,6 +177,11 @@ def sync(root: Path, version: str, force: bool = False) -> tuple[list[str], list
         inner = text[bb[0]:bb[1]]
         if inner == new:
             written[key] = sha(new.encode())
+            held.pop(key, None)
+            continue
+        if key in held:
+            conflicts.append(f"{b['path']}, блок {b['id']} — закреплён за проектом; новая версия: "
+                             f"{SYNC / 'blocks' / (b['id'] + '.md')}")
             continue
         if sha(inner.encode()) not in set(hist.get(key, [])) | {written.get(key)}:
             conflicts.append(f"{b['path']}, блок {b['id']} — правлен в проекте; новая версия: "
@@ -184,10 +190,6 @@ def sync(root: Path, version: str, force: bool = False) -> tuple[list[str], list
         dst.write_text(text[:bb[0]] + new + text[bb[1]:], encoding="utf-8")
         written[key] = sha(new.encode())
         updated.append(f"{b['path']} (блок {b['id']})")
-    statep.parent.mkdir(parents=True, exist_ok=True)
-    statep.write_text(json.dumps({"version": version, "written": written}, ensure_ascii=False, indent=2) + "\n",
-                      encoding="utf-8")
-    return updated, conflicts
 
 
 def main() -> int:
@@ -208,9 +210,19 @@ def main() -> int:
     cwd = Path(inp.get("cwd") or os.getcwd())
     root = project_root(cwd)
     # Репозиторий самой базы: template/ — исходник, синхронизировать некуда.
-    if (root / "plugins" / "muagba-base" / ".claude-plugin").is_dir() or not (root / ".claude").is_dir():
+    if is_base_repo(root) or not (root / ".claude").is_dir():
         return 0
     version = load(PLUGIN / ".claude-plugin" / "plugin.json").get("version", "?")
+    w = window(root)
+    if w and w.get("by") == "human":
+        # Окно человека не закрыто: обновлять поверх его правки нельзя, а
+        # сторож, пока окно открыто, не работает.
+        msg = (f"Блокировка файлов базы снята человеком с {w.get('since')} и не возвращена: "
+               f"сторож не работает, обновление отложено. Вернуть: "
+               f"! python3 {PLUGIN / 'scripts' / 'frame_lock.py'} lock")
+        print(json.dumps({"systemMessage": msg, "hookSpecificOutput": {
+            "hookEventName": "SessionStart", "additionalContext": msg}}, ensure_ascii=False))
+        return 0
     updated, conflicts = sync(root, version, force="--force" in args)
     if not updated and not conflicts:
         return 0

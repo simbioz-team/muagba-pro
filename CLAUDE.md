@@ -98,6 +98,9 @@ bash plugins/muagba-base/scripts/tests/run.sh
 Порядок:
 
 1. Поднять `version` в `plugins/<имя>/.claude-plugin/plugin.json`.
+   Менялся `template/` — `python3 plugins/muagba-base/scripts/template_sync.py --build`:
+   проекты получают файлы базы из `sync/`, а не из `template/` (ADR-0017).
+   Забыли — `run.sh` покраснеет.
 2. Дописать раздел в `CHANGELOG.md`.
 3. Закоммитить, запушить.
 4. `claude plugin tag plugins/<имя> --push -m "<имя> %s"` — создаёт тег

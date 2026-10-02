@@ -38,6 +38,16 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/frame_lock.py\" guard",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",
