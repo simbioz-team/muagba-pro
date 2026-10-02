@@ -1479,9 +1479,6 @@ def pr_cycle_night(c: Ctx) -> V:
         return bad("ночной режим не настроен: нет .claude/night/settings.json",
                    "взять .claude/night/ и .claude/claude-night из каркаса, поправить "
                    "схему веток (В9.11)")
-    if not ((cfg.get("autoMode") or {}).get("hard_deny")):
-        return bad("в правилах контролёра нет hard_deny — ночью нечего запрещено без человека",
-                   ".claude/night/settings.json → autoMode.hard_deny")
     launcher = c.p(".claude/claude-night")
     if not launcher.is_file() or not os.access(launcher, os.X_OK):
         return bad("нет исполняемого .claude/claude-night — ночь запускать нечем",

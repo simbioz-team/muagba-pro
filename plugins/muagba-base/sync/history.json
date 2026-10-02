@@ -1,0 +1,15 @@
+{
+  ".claude/check-frames.py": [
+    "7dacb59479e6584937cfa3dc11c130c1c040adf52940eac209f10095b3cc9039",
+    "aee197c476a1332390babfe20bb7b6998b47e03b840f739bd3336cdbd3219fde"
+  ],
+  ".claude/claude-night": [
+    "4ca6f1bc24a379e20f5b685c79e827104e23dda8f48d4e224307761804cfb2ec",
+    "9b91dbbc4e56253c0f79dd99dd7bd1956790efe41a24cc17e5a7fcb73a17102a",
+    "a93492b64ae80e436f4ac36f70c88c9ee0519fae2232d701ef5bb82dd49eed4b",
+    "fee6006bfde344fc9d21b70537428b931cf0b1a07df61c6aec0d6e4d61f496b0"
+  ],
+  "block:base-rules": [
+    "c650cadb0c39f127aa0f04a67ce4d04f859ed5ff87bee641071623c73450639b"
+  ]
+}

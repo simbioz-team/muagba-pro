@@ -86,6 +86,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/template_sync.py\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/version_check.py\"",
             "timeout": 15
           },

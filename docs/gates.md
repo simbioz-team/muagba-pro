@@ -255,7 +255,7 @@
 | `cycle.review` | независимая проверка в конвейере | `docs/workflow.md` → «Кто проверяет» | М |
 | `cycle.branching` | путь до основной ветки | `docs/workflow.md` → «Ветки и мерж» | М |
 | `cycle.rollback` | порядок отката записан | `docs/workflow.md` → «Откат» | М |
-| `cycle.night` | ночной режим настроен | `.claude/night/settings.json` с `autoMode.hard_deny`, исполняемый `.claude/claude-night`, оба в `protected-paths.txt` (ADR-0016) | М |
+| `cycle.night` | ночной режим настроен | `.claude/night/settings.json` (правила проекта; базовые — в плагине), исполняемый `.claude/claude-night`, оба в `protected-paths.txt` (ADR-0016) | М |
 | `cycle.release` | порядок выпуска записан | `docs/workflow.md` → «Релизы» | М |
 
 Решения Э6 и Э9 сведены в один документ намеренно. Порознь они расползаются по

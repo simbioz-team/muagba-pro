@@ -1000,6 +1000,10 @@ OUT=$(printf '{"hook_event_name":"PermissionRequest","tool_name":"Bash","session
 
 # Лаунчер: без подготовки сначала подготовка, ночь — после «y».
 TPL="$SCRIPTS/../../../template/.claude"
+# Лаунчер берёт базовые ночные правила из установленного плагина.
+mkdir -p "$NM/home/.claude/plugins"
+printf '{"plugins":{"muagba-base@muagba-pro":[{"scope":"user","installPath":"%s"}]}}' "$(cd "$SCRIPTS/.." && pwd)" \
+  > "$NM/home/.claude/plugins/installed_plugins.json"
 mkdir -p "$NM/l/.claude/night"; cp "$TPL/claude-night" "$NM/l/.claude/"; cp "$TPL/night/settings.json" "$NM/l/.claude/night/"
 cat > "$NM/fake" <<SH
 #!/usr/bin/env bash
@@ -1011,7 +1015,7 @@ fi
 for a in "\$@"; do case "\$prev" in --settings) cp "\$a" "$NM/merged.json";; esac; prev="\$a"; done
 SH
 chmod +x "$NM/fake"
-(cd "$NM/l" && echo y | CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1); CODE=$?
+(cd "$NM/l" && echo y | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1); CODE=$?
 [ "$CODE" = 1 ] && grep -q '^|/muagba-base:night-prep' "$NM/calls" && ! grep -q '^night|' "$NM/calls" \
   || fail "лаунчер: ночь без утверждённых разрешений" "$(cat "$NM/calls")"
 : > "$NM/calls"; touch "$NM/prep-writes"
@@ -1027,7 +1031,7 @@ grep -q '^night|--permission-mode auto --settings .* --resume abc' "$NM/calls" \
 printf '%s' "$OUT" | grep -q 'ОПАСНОЕ, утверждено явно: миграция тестовой базы' || fail "лаунчер: опасное не показано" "$OUT"
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Удаление build/ в T019' in d['autoMode']['allow'] and 'Bash(make clean)' in d['permissions']['allow'] and d['autoMode']['hard_deny']" "$NM/merged.json" \
   || fail "лаунчер: утверждённое не попало в правила ночи" "$(cat "$NM/merged.json")"
-: > "$NM/calls"; (cd "$NM/l" && echo n | CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1)
+: > "$NM/calls"; (cd "$NM/l" && echo n | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1)
 [ ! -s "$NM/calls" ] || fail "лаунчер: ночь стартовала без «y» или подготовка повторилась" "$(cat "$NM/calls")"
 (cd "$NM/l" && echo y | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --resume нетакой >/dev/null 2>&1); CODE=$?
 [ "$CODE" = 1 ] && [ ! -s "$NM/calls" ] || fail "лаунчер: несуществующая сессия не остановила запуск" "$(cat "$NM/calls")"
@@ -1136,6 +1140,52 @@ tb() {  # <файл> → код хука защиты путей на правк
 [ "$(tb "$TB/base/template/.claude/night/settings.json")" = 0 ] || fail "каркас базы: правка template/ запрещена списком каркаса" ""
 [ "$(tb "$TB/proj/template/.claude/night/settings.json")" = 2 ] || fail "проект: каталог template вышел из-под защиты" ""
 rm -rf "$TB"
+
+# --- template_sync: файлы базы обновляются в проектах сами (ADR-0017) ------
+# sync/ собран из текущего template/: иначе проекты получат не то, что в каркасе.
+python3 "$SCRIPTS/template_sync.py" --check >/dev/null || fail "template_sync: sync/ не собран из template/" "$(python3 "$SCRIPTS/template_sync.py" --check)"
+TS=$(mktemp -d); mkdir -p "$TS/.claude"; git -C "$TS" init -q
+REPO="$(cd "$SCRIPTS/../../.." && pwd)"
+FIRST=$(git -C "$REPO" log --format=%H --reverse -- template/.claude/check-frames.py | head -1)
+git -C "$REPO" show "$FIRST:template/.claude/check-frames.py" > "$TS/.claude/check-frames.py"
+printf '# Проект\n\n## Соглашения\n\n- своё правило\n' > "$TS/AGENTS.md"
+ts() { printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/template_sync.py" "$@"; }
+OUT=$(ts)
+cmp -s "$TS/.claude/check-frames.py" "$SCRIPTS/../sync/files/.claude/check-frames.py" \
+  || fail "template_sync: старая версия механизма не обновлена" "$OUT"
+grep -q 'своё правило' "$TS/AGENTS.md" && grep -q 'muagba:begin base-rules' "$TS/AGENTS.md" \
+  || fail "template_sync: блок правил базы не добавлен или потеряно своё" "$(cat "$TS/AGENTS.md")"
+[ ! -e "$TS/.claude/claude-night" ] || fail "template_sync: лаунчер создан в проекте без ночного режима" ""
+printf '%s' "$OUT" | grep -q 'обновила файлы базы' || fail "template_sync: не сказал, что обновил" "$OUT"
+[ -z "$(ts)" ] || fail "template_sync: повторный запуск той же версии не молчит" "$(ts)"
+# Изменённое проектом не трогается.
+echo '# моя правка' >> "$TS/.claude/check-frames.py"; cp "$TS/.claude/check-frames.py" "$TS/cf.mine"
+OUT=$(ts --force)
+cmp -s "$TS/.claude/check-frames.py" "$TS/cf.mine" || fail "template_sync: затёрт изменённый проектом файл" ""
+printf '%s' "$OUT" | grep -q 'check-frames.py — изменён в проекте' || fail "template_sync: конфликт не назван" "$OUT"
+# Блок, правленный проектом, не трогается; несправленный, но устаревший — обновляется.
+python3 - "$TS/AGENTS.md" <<'PY'
+import sys; p=sys.argv[1]; s=open(p).read(); open(p,"w").write(s.replace("## Правила базы", "## Правила базы (моё)"))
+PY
+OUT=$(ts --force); grep -q 'Правила базы (моё)' "$TS/AGENTS.md" && printf '%s' "$OUT" | grep -q 'блок base-rules — правлен' \
+  || fail "template_sync: правленый блок затёрт или конфликт не назван" "$OUT"
+python3 - "$TS" <<'PY'
+import hashlib, json, sys
+root = sys.argv[1]; p = root + "/AGENTS.md"; s = open(p).read()
+old = "## Правила базы (старое)\n"
+b = s.index("\n", s.index("<!-- muagba:begin base-rules")) + 1; e = s.index("<!-- muagba:end base-rules -->")
+open(p, "w").write(s[:b] + old + s[e:])
+st = json.load(open(root + "/.claude/muagba-sync.json"))
+st["written"]["block:base-rules"] = hashlib.sha256(old.encode()).hexdigest()
+json.dump(st, open(root + "/.claude/muagba-sync.json", "w"))
+PY
+ts --force >/dev/null; grep -q 'Правила базы (старое)' "$TS/AGENTS.md" && fail "template_sync: блок, записанный базой, не обновлён" ""
+# Ночной режим настроен — лаунчер появляется и исполняемый.
+mkdir -p "$TS/.claude/night"; echo '{}' > "$TS/.claude/night/settings.json"; ts --force >/dev/null
+[ -x "$TS/.claude/claude-night" ] || fail "template_sync: лаунчер не создан в проекте с ночным режимом" ""
+# Репозиторий самой базы не синхронизируется.
+[ -z "$(printf '{"cwd":"%s"}' "$REPO" | python3 "$SCRIPTS/template_sync.py" --force)" ] || fail "template_sync: тронул репозиторий базы" ""
+rm -rf "$TS"
 
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.

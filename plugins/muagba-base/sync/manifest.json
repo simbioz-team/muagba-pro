@@ -1,0 +1,10 @@
+{
+  "_note": "Что база обновляет в проектах сама (ADR-0017). Файлы — целиком, если проект их не менял; блоки — между метками muagba:begin/end. Источник — template/; sync/ собирается: python3 plugins/muagba-base/scripts/template_sync.py --build",
+  "files": [
+    {"path": ".claude/check-frames.py"},
+    {"path": ".claude/claude-night", "exec": true, "create": true, "requires": ".claude/night/settings.json"}
+  ],
+  "blocks": [
+    {"path": "AGENTS.md", "id": "base-rules"}
+  ]
+}
