@@ -13,12 +13,51 @@
 #    из файла, переданного при запуске, — проект сам себе их не расширит.
 #    Что всё же дошло бы до человека, хук базы откладывает в
 #    .claude/logs/morning.md.
+#
+# Каталог запуска. С --resume <сессия> ночь идёт в каталоге этой сессии —
+# Claude продолжает сессию только оттуда, где она начата, а лаунчер может
+# лежать в рабочем дереве. Так у narta ночь не началась вовсе: лаунчер ушёл в
+# дерево координатора, сессия жила в основном checkout, --resume не нашёл её,
+# и сессию подняли обычным claude, без ночного режима. Без --resume — текущий
+# каталог.
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BASE="$ROOT/.claude/night/settings.json"
 APPROVED="$ROOT/.claude/night/approved.json"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 TODAY=$(date +%F)
+
+# Каталог сессии из --resume: первая запись стенограммы с полем cwd.
+RUN_DIR="$PWD"
+SESSION=""
+prev=""
+for a in "$@"; do
+  case "$prev" in --resume|-r) SESSION="$a" ;; esac
+  case "$a" in --resume=*) SESSION="${a#--resume=}" ;; esac
+  prev="$a"
+done
+if [ -n "$SESSION" ]; then
+  FOUND=$(python3 - "$SESSION" <<'PY'
+import glob, json, os, sys
+for f in glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sys.argv[1]}.jsonl")):
+    for line in open(f, encoding="utf-8", errors="replace"):
+        try:
+            cwd = json.loads(line).get("cwd")
+        except ValueError:
+            continue
+        if cwd:
+            print(cwd)
+            sys.exit(0)
+PY
+)
+  if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then
+    RUN_DIR="$FOUND"
+  else
+    echo "claude-night: сессия $SESSION не найдена — ночь не начинается (проверьте id: claude --resume покажет список)." >&2
+    exit 1
+  fi
+fi
+echo "claude-night: ночь пойдёт в $RUN_DIR"
 
 approved_today() {
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("date")==sys.argv[2] else 1)' \
@@ -28,9 +67,18 @@ approved_today() {
 [ -f "$BASE" ] || { echo "claude-night: нет $BASE — ночной режим не настроен (вопрос В9.11)." >&2; exit 1; }
 
 if ! approved_today; then
-  echo "claude-night: подготовки к ночи сегодня не было — запускаю её (обычный режим, с вами)."
-  (cd "$ROOT" && "$CLAUDE_BIN" "/muagba-base:night-prep")
+  cat <<MSG
+claude-night: подготовки к ночи сегодня не было — сначала она, в обычном режиме, с вами.
+  Сейчас откроется сессия подготовки. Когда утвердите разрешения, закройте её
+  командой /exit — ночь стартует сама, из этого же окна. Лаунчер второй раз
+  запускать не нужно.
+MSG
+  # Ctrl+C в сессии подготовки не должен убивать лаунчер: после неё — ночь.
+  trap 'true' INT
+  (cd "$RUN_DIR" && MUAGBA_NIGHT_APPROVED="$APPROVED" "$CLAUDE_BIN" "/muagba-base:night-prep")
+  trap - INT
   approved_today || { echo "claude-night: разрешения на сегодня не утверждены — ночь не начинается." >&2; exit 1; }
+  echo "claude-night: подготовка закрыта, утверждённое на сегодня есть."
 fi
 
 MERGED=$(mktemp "${TMPDIR:-/tmp}/claude-night.XXXXXX.json")
@@ -59,4 +107,4 @@ read -r -p "Запустить ночь с этими разрешениями? 
 export MUAGBA_MODE=night
 export MUAGBA_NIGHT_START
 MUAGBA_NIGHT_START=$(date -Is)
-cd "$ROOT" && exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"
+cd "$RUN_DIR" && exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"

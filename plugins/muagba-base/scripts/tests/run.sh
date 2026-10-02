@@ -1004,25 +1004,43 @@ mkdir -p "$NM/l/.claude/night"; cp "$TPL/claude-night" "$NM/l/.claude/"; cp "$TP
 cat > "$NM/fake" <<SH
 #!/usr/bin/env bash
 echo "\$MUAGBA_MODE|\$*" >> "$NM/calls"
+pwd >> "$NM/dirs"
 if [ "\$1" = /muagba-base:night-prep ] && [ -f "$NM/prep-writes" ]; then
-  printf '{"date":"%s","allow_rules":["Удаление build/ в T019"],"allow_commands":["Bash(make clean)"],"dangerous":["миграция тестовой базы"]}' "\$(date +%F)" > .claude/night/approved.json
+  printf '{"date":"%s","allow_rules":["Удаление build/ в T019"],"allow_commands":["Bash(make clean)"],"dangerous":["миграция тестовой базы"]}' "\$(date +%F)" > "\$MUAGBA_NIGHT_APPROVED"
 fi
 for a in "\$@"; do case "\$prev" in --settings) cp "\$a" "$NM/merged.json";; esac; prev="\$a"; done
 SH
 chmod +x "$NM/fake"
-echo y | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" >/dev/null 2>&1; CODE=$?
+(cd "$NM/l" && echo y | CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1); CODE=$?
 [ "$CODE" = 1 ] && grep -q '^|/muagba-base:night-prep' "$NM/calls" && ! grep -q '^night|' "$NM/calls" \
   || fail "лаунчер: ночь без утверждённых разрешений" "$(cat "$NM/calls")"
 : > "$NM/calls"; touch "$NM/prep-writes"
-OUT=$(echo y | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" --resume abc 2>&1)
+# --resume: ночь — в каталоге сессии, а не там, где лежит лаунчер (у narta
+# лаунчер в дереве координатора, сессия — в основном checkout).
+mkdir -p "$NM/home/.claude/projects/x" "$NM/sess"; : > "$NM/dirs"
+printf '{"type":"mode"}\n{"cwd":"%s","type":"user"}\n' "$NM/sess" > "$NM/home/.claude/projects/x/abc.jsonl"
+OUT=$(cd "$NM/l" && echo y | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --resume abc 2>&1)
 grep -q '^|/muagba-base:night-prep' "$NM/calls" || fail "лаунчер: подготовка не запущена" "$(cat "$NM/calls")"
+[ "$(sort -u "$NM/dirs")" = "$NM/sess" ] || fail "лаунчер: подготовка или ночь не в каталоге сессии" "$(cat "$NM/dirs")"
 grep -q '^night|--permission-mode auto --settings .* --resume abc' "$NM/calls" \
   || fail "лаунчер: ночь не в режиме auto с правилами" "$(cat "$NM/calls")"
 printf '%s' "$OUT" | grep -q 'ОПАСНОЕ, утверждено явно: миграция тестовой базы' || fail "лаунчер: опасное не показано" "$OUT"
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Удаление build/ в T019' in d['autoMode']['allow'] and 'Bash(make clean)' in d['permissions']['allow'] and d['autoMode']['hard_deny']" "$NM/merged.json" \
   || fail "лаунчер: утверждённое не попало в правила ночи" "$(cat "$NM/merged.json")"
-: > "$NM/calls"; echo n | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" >/dev/null 2>&1
+: > "$NM/calls"; (cd "$NM/l" && echo n | CLAUDE_BIN="$NM/fake" bash .claude/claude-night >/dev/null 2>&1)
 [ ! -s "$NM/calls" ] || fail "лаунчер: ночь стартовала без «y» или подготовка повторилась" "$(cat "$NM/calls")"
+(cd "$NM/l" && echo y | HOME="$NM/home" CLAUDE_BIN="$NM/fake" bash .claude/claude-night --resume нетакой >/dev/null 2>&1); CODE=$?
+[ "$CODE" = 1 ] && [ ! -s "$NM/calls" ] || fail "лаунчер: несуществующая сессия не остановила запуск" "$(cat "$NM/calls")"
+
+# Старт сессии: подготовка есть, а ночного режима нет — предупредить.
+mkdir -p "$NM/s/.claude/night"; git -C "$NM/s" init -q
+ns() { printf '{"cwd":"%s"}' "$NM/s" | env "$@" python3 "$SCRIPTS/night_status.py"; }
+[ -z "$(ns MUAGBA_MODE=)" ] || fail "night_status: говорит без подготовки" "$(ns MUAGBA_MODE=)"
+printf '{"date":"%s"}' "$(date +%F)" > "$NM/s/.claude/night/approved.json"
+ns MUAGBA_MODE= | grep -q 'systemMessage.*НЕ действует' || fail "night_status: ночь без лаунчера не замечена" "$(ns MUAGBA_MODE=)"
+ns MUAGBA_MODE=night | grep -q 'Ночной режим (ADR-0016)' || fail "night_status: ночная сессия без напоминания" "$(ns MUAGBA_MODE=night)"
+printf '{"date":"2000-01-01"}' > "$NM/s/.claude/night/approved.json"
+[ -z "$(ns MUAGBA_MODE=)" ] || fail "night_status: вчерашняя подготовка принята за сегодняшнюю" ""
 
 # Проба cycle.night: каркас зелёный; без защиты или без лаунчера — красный.
 mkdir -p "$NM/c/.claude/night"; git -C "$NM/c" init -q

@@ -154,6 +154,7 @@ claude plugin update muagba-base@muagba-pro
 | `PostToolUse` (Bash) | `log-wait.sh` | Команда шла дольше `MUAGBA_SLOW_MS` (60 с) — событие `slow` |
 | `PostCompact` | `journal_watch.py postcompact` | Сохраняет выжимку сжатия в `.claude/logs/compact/` |
 | `SessionStart` (startup, resume) | `version_check.py` | Загруженная версия плагина старше выпущенной или собрана не из тега выпуска — предупреждение человеку и агенту с командой обновления |
+| `SessionStart` (startup, resume) | `night_status.py` | Ночной режим: напоминание агенту, что человека нет; подготовка к ночи на сегодня есть, а сессия запущена без лаунчера — предупреждение «ночной режим НЕ действует» |
 | `SessionStart` (compact) | `reinject-invariants.sh` | Возвращает `.claude/invariants.md` в контекст после компакции |
 | `SessionStart` (compact) | `journal_watch.py reinject` | Называет последнюю запись журнала и велит перечитать её и продолжить |
 | `SubagentStart/Stop` | `log-agent.sh` | Журнал запусков в `.claude/logs/agents.jsonl` **проекта сессии**; на `SubagentStop` — модель, effort, токены и время запуска из его стенограммы (накопительно) |
