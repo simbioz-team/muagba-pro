@@ -37,7 +37,14 @@ fi
 
 case "$(jq_get hook_event_name)" in
   PermissionRequest)
-    if [ "${MUAGBA_MODE:-}" = night ]; then
+    # Ночь — переменная от лаунчера или пометка сессии от night_switch.py
+    # (ночь в той же сессии, в том же терминале).
+    NIGHT="${MUAGBA_MODE:-}"
+    SID=$(jq_get session_id)
+    if [ "$NIGHT" != night ] && [ -n "$SID" ] && [ -f "$HOME/.claude/muagba-night/sessions/$SID.json" ]; then
+      NIGHT=night
+    fi
+    if [ "$NIGHT" = night ]; then
       log_event night_deferred tool="$TOOL" class="$CLASS"
       MORNING="$(project_dir)/.claude/logs/morning.md"
       [ -d "$(dirname "$MORNING")" ] || MORNING=""

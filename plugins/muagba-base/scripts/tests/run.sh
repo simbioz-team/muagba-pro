@@ -1055,6 +1055,39 @@ printf '{"date":"%s"}' "$(date +%F)" > "$NM/m/.claude/worktrees/coord/.claude/ni
 python3 "$SCRIPTS/night_locate.py" "$NM/m" | grep -q '"launcher": "'"$NM"'/m/.claude/worktrees/coord/.claude/claude-night".*"approved_today": true' \
   || fail "night_locate: лаунчер в дереве координатора не найден из основного checkout" "$(python3 "$SCRIPTS/night_locate.py" "$NM/m")"
 
+# Ночь в той же сессии: night_switch on/off правит настройки человека и
+# ставит пометку сессии; хуки по пометке отказывают; off убирает ровно своё.
+NH="$NM/nh"; mkdir -p "$NH/.claude" "$NM/np/.claude/night" "$NM/np/.claude/logs"; git -C "$NM/np" init -q
+cp "$TPL/night/settings.json" "$TPL/claude-night" "$NM/np/.claude/" 2>/dev/null; mv "$NM/np/.claude/settings.json" "$NM/np/.claude/night/settings.json"
+printf '{"permissions":{"allow":["Bash(ls)"]},"autoMode":{"environment":["своё"]},"theme":"dark"}\n' > "$NH/.claude/settings.json"
+cp "$NH/.claude/settings.json" "$NM/user.before.json"
+sw() { HOME="$NH" python3 "$SCRIPTS/night_switch.py" "$@" --cwd "$NM/np"; }
+sw on --session S1 >/dev/null && fail "night_switch: ночь без утверждённого включилась" ""
+printf '{"date":"%s","allow_rules":["Удаление build/ в T7"],"allow_commands":["Bash(make clean)"]}' "$(date +%F)" > "$NM/np/.claude/night/approved.json"
+sw on --session S1 >/dev/null || fail "night_switch: ночь не включилась" "$(sw on --session S1)"
+python3 - "$NH/.claude/settings.json" <<'PY' || fail "night_switch: правила ночи не дописаны" "$(cat "$NH/.claude/settings.json")"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert "Удаление build/ в T7" in d["autoMode"]["allow"] and d["autoMode"]["hard_deny"], d
+assert "Bash(make clean)" in d["permissions"]["allow"] and "Bash(ls)" in d["permissions"]["allow"], d
+assert any("main" in x for x in d["permissions"]["deny"]) and d["theme"] == "dark", d
+PY
+sw on --session S1 >/dev/null && fail "night_switch: ночь включена дважды" ""
+OUT=$(printf '{"hook_event_name":"PermissionRequest","tool_name":"Bash","session_id":"S1","tool_input":{"command":"rm x"}}' \
+  | HOME="$NH" CLAUDE_PROJECT_DIR="$NM/np" bash "$SCRIPTS/log-wait.sh")
+printf '%s' "$OUT" | grep -q '"behavior": "deny"' || fail "ночь по пометке: вопрос не отклонён" "$OUT"
+OUT=$(printf '{"hook_event_name":"PermissionRequest","tool_name":"Bash","session_id":"S2","tool_input":{"command":"rm x"}}' \
+  | HOME="$NH" CLAUDE_PROJECT_DIR="$NM/np" bash "$SCRIPTS/log-wait.sh")
+[ -z "$OUT" ] || fail "ночь по пометке: чужая сессия получила отказ" "$OUT"
+printf '{"cwd":"%s","session_id":"S1"}' "$NM/np" | HOME="$NH" python3 "$SCRIPTS/night_status.py" | grep -q 'Ночной режим (ADR-0016)' \
+  || fail "night_status: ночная по пометке сессия без напоминания" ""
+printf '{"cwd":"%s","session_id":"S2"}' "$NM/np" | HOME="$NH" python3 "$SCRIPTS/night_status.py" | grep -q 'включены ночные правила' \
+  || fail "night_status: другая сессия не предупреждена о ночных правилах" ""
+sw off >/dev/null
+python3 -c "import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); assert a==b, (a,b)" \
+  "$NH/.claude/settings.json" "$NM/user.before.json" || fail "night_switch off: настройки человека не вернулись к прежним" "$(cat "$NH/.claude/settings.json")"
+[ ! -e "$NH/.claude/muagba-night/sessions/S1.json" ] || fail "night_switch off: пометка ночи осталась" ""
+
 # Старт сессии: подготовка есть, а ночного режима нет — предупредить.
 mkdir -p "$NM/s/.claude/night"; git -C "$NM/s" init -q
 ns() { printf '{"cwd":"%s"}' "$NM/s" | env "$@" python3 "$SCRIPTS/night_status.py"; }

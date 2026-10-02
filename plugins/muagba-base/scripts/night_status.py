@@ -48,18 +48,34 @@ def main() -> None:
     except ValueError:
         inp = {}
     cwd = Path(inp.get("cwd") or os.getcwd())
-    if os.environ.get("MUAGBA_MODE") == "night":
+    sid = str(inp.get("session_id") or "")
+    nd = Path(os.path.expanduser("~")) / ".claude" / "muagba-night"
+    flagged = bool(sid) and (nd / "sessions" / f"{sid}.json").is_file()
+    if os.environ.get("MUAGBA_MODE") == "night" or flagged:
         print("Ночной режим (ADR-0016): человека нет до утра. Всё, что требует его, — вопрос или "
               "действие сверх утверждённого на подготовке, — получит отказ и попадёт в "
               ".claude/logs/morning.md. Не жди и не обходи: обратимое реши по умолчанию со "
               "«Спросить: да», необратимое отложи и бери следующую независимую задачу.")
         return
+    # Ночные правила лежат в пользовательских настройках, а эта сессия — не
+    # ночная: забыли выключить ночь или сессия упала. Правила видят все
+    # сессии в auto.
+    try:
+        st = json.loads((nd / "state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st = {}
+    if st.get("added"):
+        msg = (f"В ~/.claude/settings.json включены ночные правила (с {st.get('since')}, сессия "
+               f"{st.get('session')}, проект {st.get('project')}). Если ночь закончилась — "
+               "/muagba-base:day или night_switch.py off: правила видят все сессии в режиме auto.")
+        print(json.dumps({"systemMessage": msg, "hookSpecificOutput": {
+            "hookEventName": "SessionStart", "additionalContext": msg}}, ensure_ascii=False))
+        return
     f = approved_today(cwd)
     if f:
         msg = (f"Подготовка к ночи на сегодня есть ({f}), но эта сессия запущена без лаунчера — "
                "ночной режим НЕ действует: вопросы и подтверждения будут ждать человека. "
-               "Ночь запускается в терминале командой .claude/claude-night [--resume <сессия>], "
-               "не через ! и не сообщением агенту.")
+               "Включить ночь в этой же сессии — /muagba-base:night.")
         print(json.dumps({"systemMessage": msg,
                           "hookSpecificOutput": {"hookEventName": "SessionStart",
                                                  "additionalContext": msg}}, ensure_ascii=False))
