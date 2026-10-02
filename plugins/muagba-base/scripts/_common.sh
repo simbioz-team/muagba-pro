@@ -45,10 +45,19 @@ work_dir() {
 # соседний каталог (скил настройки прямо это умеет), и тогда cwd указывает
 # не туда: применялись бы правила чужого проекта, а то и захардкоженные
 # умолчания. Найдено обкаткой.
+#
+# Исключение — каркас в репозитории самой базы (`template/` рядом с
+# `plugins/muagba-base`). Его `.claude/protected-paths.txt` — исходник для
+# проектов, а не правила репозитория базы: применённый к самому каркасу, он
+# запрещал править то, что база и выпускает.
 owner_dir() {
   local d
   d=$(dirname -- "$1" 2>/dev/null) || return 1
   while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+    if [ "$(basename -- "$d")" = template ] && [ -d "$(dirname -- "$d")/plugins/muagba-base/.claude-plugin" ]; then
+      d=$(dirname -- "$d")
+      continue
+    fi
     if [ -d "$d/.claude" ] || [ -d "$d/.git" ]; then
       printf '%s' "$d"
       return 0

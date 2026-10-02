@@ -1122,6 +1122,21 @@ printf '%s' "$OUT" | grep -q 'слияний PR: 1' || fail "night_report: сл�
 printf '%s' "$OUT" | grep -q 'отложено до человека: 2' || fail "night_report: отложенное не посчитано" "$OUT"
 rm -rf "$NM"
 
+# --- каркас в репозитории базы — не проект -------------------------------
+# template/.claude/protected-paths.txt — исходник для проектов; к самому
+# каркасу в репозитории базы он не применяется. В проекте каталог с именем
+# template — обычный, и его список действует.
+TB=$(mktemp -d); mkdir -p "$TB/base/plugins/muagba-base/.claude-plugin" "$TB/base/template/.claude" "$TB/proj/template/.claude"
+git -C "$TB/base" init -q; git -C "$TB/proj" init -q
+printf '.claude/night/settings.json\n' > "$TB/base/template/.claude/protected-paths.txt"; cp "$TB/base/template/.claude/protected-paths.txt" "$TB/proj/template/.claude/"
+tb() {  # <файл> → код хука защиты путей на правку
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"},"cwd":"%s"}' "$1" "$(dirname "$1")" \
+    | bash "$SCRIPTS/protect-paths.sh" >/dev/null 2>&1; echo $?
+}
+[ "$(tb "$TB/base/template/.claude/night/settings.json")" = 0 ] || fail "каркас базы: правка template/ запрещена списком каркаса" ""
+[ "$(tb "$TB/proj/template/.claude/night/settings.json")" = 2 ] || fail "проект: каталог template вышел из-под защиты" ""
+rm -rf "$TB"
+
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
 OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q

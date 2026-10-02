@@ -75,17 +75,10 @@ def on(a) -> int:
         print(f"night_switch: ночь уже включена (сессия {st.get('session')}). Сначала off.")
         return 1
     night_dir = Path(loc["approved"]).parent
-    rules = load(night_dir / "settings.json")
-    appr = load(Path(loc["approved"]))
-    am = rules.get("autoMode") or {}
-    add = {
-        "autoMode.environment": list(am.get("environment") or []),
-        "autoMode.allow": list(am.get("allow") or []) + list(appr.get("allow_rules") or []),
-        "autoMode.soft_deny": list(am.get("soft_deny") or []),
-        "autoMode.hard_deny": list(am.get("hard_deny") or []),
-        "permissions.allow": list(appr.get("allow_commands") or []),
-        "permissions.deny": list((rules.get("permissions") or {}).get("deny") or []),
-    }
+    from night_rules import merged
+    m = merged(load(night_dir / "settings.json"), load(Path(loc["approved"])))
+    add = {f"{sect}.{field}": items for sect in ("autoMode", "permissions")
+           for field, items in m[sect].items()}
     sp = home() / "settings.json"
     cfg = load(sp)
     # Копия на случай, если что-то пойдёт не так: off убирает по списку,
