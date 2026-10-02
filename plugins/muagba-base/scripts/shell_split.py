@@ -128,6 +128,16 @@ def segments(command: str) -> list[list[str]]:
     return result
 
 
+# Инструменты с подкомандами: у них второе слово — класс действия (`git push`).
+# У остальных второе слово — аргумент, часто имя файла или текст, и в журнал
+# оно не идёт: `rm SECRETTEXT` давало класс «rm SECRETTEXT» (нашёл тест ночного
+# режима 0.20.0).
+SUBCOMMAND_TOOLS = {"git", "gh", "uv", "npm", "pnpm", "yarn", "npx", "corepack", "docker",
+                    "kubectl", "cargo", "go", "pip", "pip3", "poetry", "make", "just",
+                    "systemctl", "claude", "brew", "apt", "apt-get", "terraform", "helm",
+                    "dotnet", "mvn", "gradle", "bundle", "rails", "composer"}
+
+
 def command_class(command: str) -> str:
     """Класс команды без её текста: программа и подкоманда каждой простой
     команды, через «+». `git push && gh pr create --title …` → `git push+gh pr`.
@@ -141,7 +151,7 @@ def command_class(command: str) -> str:
         if not argv:
             continue
         head = argv[0].rsplit("/", 1)[-1]
-        sub = next((t for t in argv[1:2] if not t.startswith("-")), "")
+        sub = next((t for t in argv[1:2] if not t.startswith("-")), "") if head in SUBCOMMAND_TOOLS else ""
         # Подкоманда — короткое слово, а не путь или текст.
         if sub and not (sub.isascii() and sub.replace("-", "").isalpha() and len(sub) <= 20):
             sub = ""

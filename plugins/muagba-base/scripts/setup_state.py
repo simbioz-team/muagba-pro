@@ -1466,6 +1466,35 @@ def pr_cycle_release(c: Ctx) -> V:
     return c.frames("docs/workflow.md", "Релизы")
 
 
+def pr_cycle_night(c: Ctx) -> V:
+    """Ночной режим настроен (ADR-0016): правила контролёра, лаунчер, защита.
+
+    Ночной прогон без него встаёт на первом вопросе человеку и стоит до
+    утра. Правила контролёра Claude Code читает только из файла, переданного
+    при запуске, — поэтому лаунчер, и поэтому оба файла под защитой: агент,
+    правящий их, расширял бы себе права на следующую ночь.
+    """
+    cfg = c.json(".claude/night/settings.json")
+    if cfg is None:
+        return bad("ночной режим не настроен: нет .claude/night/settings.json",
+                   "взять .claude/night/ и .claude/claude-night из каркаса, поправить "
+                   "схему веток (В9.11)")
+    if not ((cfg.get("autoMode") or {}).get("hard_deny")):
+        return bad("в правилах контролёра нет hard_deny — ночью нечего запрещено без человека",
+                   ".claude/night/settings.json → autoMode.hard_deny")
+    launcher = c.p(".claude/claude-night")
+    if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        return bad("нет исполняемого .claude/claude-night — ночь запускать нечем",
+                   "взять из каркаса, chmod +x")
+    prot = protected_patterns_of(c)
+    missing = [p for p in (".claude/night/settings.json", ".claude/claude-night")
+               if not any(p == x or p.startswith(x.rstrip("/") + "/") for x in prot)]
+    if missing:
+        return bad(f"не под защитой: {', '.join(missing)} — агент расширил бы себе права на следующую ночь",
+                   ".claude/protected-paths.txt")
+    return ok()
+
+
 # Э10 -----------------------------------------------------------------------
 def main_checkout(c: Ctx) -> Path | None:
     """Основной checkout, если мы в рабочем дереве. Иначе None."""
@@ -1800,6 +1829,8 @@ PROBES = [
           fills=("docs/workflow.md", "Ветки и мерж"), run=pr_cycle_branching),
     Probe("cycle.rollback", "Э9", "порядок отката записан",
           fills=("docs/workflow.md", "Откат"), run=pr_cycle_rollback),
+    Probe("cycle.night", "Э9", "ночной режим настроен",
+          fills=(".claude/night/settings.json", None), run=pr_cycle_night),
     Probe("cycle.release", "Э9", "порядок выпуска записан",
           fills=("docs/workflow.md", "Релизы"), run=pr_cycle_release),
 

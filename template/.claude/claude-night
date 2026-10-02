@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Ночной прогон (ADR-0016 базы muagba-pro). Запускает человек:
+#   .claude/claude-night [аргументы claude, например --resume <сессия>]
+#
+# 1. Подготовка обязательна. Нет утверждённых на сегодня разрешений
+#    (.claude/night/approved.json с сегодняшней датой) — сначала
+#    запускается подготовка, /muagba-base:night-prep, в обычном режиме,
+#    с человеком.
+# 2. Утверждённое показывается, ночь стартует только после «y».
+# 3. Ночь — режим auto Claude Code: каждое действие, которое днём спросило
+#    бы человека, проверяет контролёр по правилам из .claude/night/settings.json
+#    и утверждённым на сегодня. Правила контролёра Claude Code читает только
+#    из файла, переданного при запуске, — проект сам себе их не расширит.
+#    Что всё же дошло бы до человека, хук базы откладывает в
+#    .claude/logs/morning.md.
+set -uo pipefail
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+BASE="$ROOT/.claude/night/settings.json"
+APPROVED="$ROOT/.claude/night/approved.json"
+CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+TODAY=$(date +%F)
+
+approved_today() {
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("date")==sys.argv[2] else 1)' \
+    "$APPROVED" "$TODAY" 2>/dev/null
+}
+
+[ -f "$BASE" ] || { echo "claude-night: нет $BASE — ночной режим не настроен (вопрос В9.11)." >&2; exit 1; }
+
+if ! approved_today; then
+  echo "claude-night: подготовки к ночи сегодня не было — запускаю её (обычный режим, с вами)."
+  (cd "$ROOT" && "$CLAUDE_BIN" "/muagba-base:night-prep")
+  approved_today || { echo "claude-night: разрешения на сегодня не утверждены — ночь не начинается." >&2; exit 1; }
+fi
+
+MERGED=$(mktemp "${TMPDIR:-/tmp}/claude-night.XXXXXX.json")
+python3 - "$BASE" "$APPROVED" "$MERGED" <<'PY' || exit 1
+import json, sys
+base, appr, out = (json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3])
+am = base.setdefault("autoMode", {})
+am["allow"] = list(am.get("allow") or []) + list(appr.get("allow_rules") or [])
+perm = base.setdefault("permissions", {})
+perm["allow"] = list(perm.get("allow") or []) + list(appr.get("allow_commands") or [])
+json.dump(base, open(out, "w"), ensure_ascii=False, indent=2)
+print("Ночью разрешено сверх дневного (утверждено " + appr["date"] + "):")
+for r in appr.get("allow_rules") or []:
+    print("  • " + r)
+for c in appr.get("allow_commands") or []:
+    print("  • команда " + c)
+for d in appr.get("dangerous") or []:
+    print("  ⚠ ОПАСНОЕ, утверждено явно: " + d)
+for t in appr.get("tasks") or []:
+    print("  ▸ задача: " + t)
+PY
+
+read -r -p "Запустить ночь с этими разрешениями? [y/N] " ANSWER
+[ "$ANSWER" = y ] || [ "$ANSWER" = Y ] || { echo "Отменено."; exit 1; }
+
+export MUAGBA_MODE=night
+export MUAGBA_NIGHT_START
+MUAGBA_NIGHT_START=$(date -Is)
+cd "$ROOT" && exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"

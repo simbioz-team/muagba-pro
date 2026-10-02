@@ -975,6 +975,79 @@ printf '%s' "$OUT" | grep -q '| T001 | muagba-base:implementer | muagba-base:rev
   || fail "pipeline_queues: ожидание доставки уведомления не посчитано" "$OUT"
 rm -rf "$PQ"
 
+# --- ночной режим (ADR-0016): хук, лаунчер, проба, утренний отчёт ----------
+# Ночью вопрос человеку висел до утра. Хук отвечает отказом с причиной и
+# пишет нужное в утренний список; лаунчер не стартует ночь без подготовки.
+NM=$(mktemp -d); mkdir -p "$NM/p/.claude/logs"
+nm() {  # <json> → stdout хука в ночном режиме
+  printf '%s' "$1" | CLAUDE_PROJECT_DIR="$NM/p" MUAGBA_MODE=night bash "$SCRIPTS/log-wait.sh"
+}
+OUT=$(nm '{"hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion","session_id":"s","cwd":"'"$NM/p"'","tool_input":{"questions":[{"question":"Какой тип id?","options":[{"label":"uuid"},{"label":"bigint"}]}]}}')
+printf '%s' "$OUT" | grep -q '"behavior": "deny"' || fail "ночь: вопрос человеку не отклонён" "$OUT"
+grep -q 'Какой тип id?.*uuid; bigint' "$NM/p/.claude/logs/morning.md" \
+  || fail "ночь: вопрос не записан в утренний список" "$(cat "$NM/p/.claude/logs/morning.md" 2>/dev/null)"
+OUT=$(nm '{"hook_event_name":"PermissionRequest","tool_name":"Bash","session_id":"s","cwd":"'"$NM/p"'","agent_type":"implementer","tool_input":{"command":"rm SECRETTEXT","description":"Удалить старый снимок"}}')
+printf '%s' "$OUT" | grep -q '"behavior": "deny"' || fail "ночь: действие не отклонено" "$OUT"
+grep -q 'implementer · нужно разрешение: Bash — Удалить старый снимок' "$NM/p/.claude/logs/morning.md" \
+  || fail "ночь: действие не записано в утренний список" "$(cat "$NM/p/.claude/logs/morning.md")"
+grep -q SECRETTEXT "$NM/p/.claude/logs/morning.md" "$NM/p/.claude/logs/agents.jsonl" && fail "ночь: текст команды попал в записи" ""
+grep -q '"event": "night_deferred"' "$NM/p/.claude/logs/agents.jsonl" || fail "ночь: отложенное не в журнале" ""
+grep -q '"event": "wait"' "$NM/p/.claude/logs/agents.jsonl" && fail "ночь: отказ записан как ожидание" ""
+# Днём — по-прежнему вопрос человеку: хук решения не возвращает.
+OUT=$(printf '{"hook_event_name":"PermissionRequest","tool_name":"Bash","session_id":"s","tool_input":{"command":"rm x"}}' \
+  | CLAUDE_PROJECT_DIR="$NM/p" bash "$SCRIPTS/log-wait.sh")
+[ -z "$OUT" ] || fail "день: хук ожидания вернул решение" "$OUT"
+
+# Лаунчер: без подготовки сначала подготовка, ночь — после «y».
+TPL="$SCRIPTS/../../../template/.claude"
+mkdir -p "$NM/l/.claude/night"; cp "$TPL/claude-night" "$NM/l/.claude/"; cp "$TPL/night/settings.json" "$NM/l/.claude/night/"
+cat > "$NM/fake" <<SH
+#!/usr/bin/env bash
+echo "\$MUAGBA_MODE|\$*" >> "$NM/calls"
+if [ "\$1" = /muagba-base:night-prep ] && [ -f "$NM/prep-writes" ]; then
+  printf '{"date":"%s","allow_rules":["Удаление build/ в T019"],"allow_commands":["Bash(make clean)"],"dangerous":["миграция тестовой базы"]}' "\$(date +%F)" > .claude/night/approved.json
+fi
+for a in "\$@"; do case "\$prev" in --settings) cp "\$a" "$NM/merged.json";; esac; prev="\$a"; done
+SH
+chmod +x "$NM/fake"
+echo y | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" >/dev/null 2>&1; CODE=$?
+[ "$CODE" = 1 ] && grep -q '^|/muagba-base:night-prep' "$NM/calls" && ! grep -q '^night|' "$NM/calls" \
+  || fail "лаунчер: ночь без утверждённых разрешений" "$(cat "$NM/calls")"
+: > "$NM/calls"; touch "$NM/prep-writes"
+OUT=$(echo y | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" --resume abc 2>&1)
+grep -q '^|/muagba-base:night-prep' "$NM/calls" || fail "лаунчер: подготовка не запущена" "$(cat "$NM/calls")"
+grep -q '^night|--permission-mode auto --settings .* --resume abc' "$NM/calls" \
+  || fail "лаунчер: ночь не в режиме auto с правилами" "$(cat "$NM/calls")"
+printf '%s' "$OUT" | grep -q 'ОПАСНОЕ, утверждено явно: миграция тестовой базы' || fail "лаунчер: опасное не показано" "$OUT"
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Удаление build/ в T019' in d['autoMode']['allow'] and 'Bash(make clean)' in d['permissions']['allow'] and d['autoMode']['hard_deny']" "$NM/merged.json" \
+  || fail "лаунчер: утверждённое не попало в правила ночи" "$(cat "$NM/merged.json")"
+: > "$NM/calls"; echo n | CLAUDE_BIN="$NM/fake" bash "$NM/l/.claude/claude-night" >/dev/null 2>&1
+[ ! -s "$NM/calls" ] || fail "лаунчер: ночь стартовала без «y» или подготовка повторилась" "$(cat "$NM/calls")"
+
+# Проба cycle.night: каркас зелёный; без защиты или без лаунчера — красный.
+mkdir -p "$NM/c/.claude/night"; git -C "$NM/c" init -q
+cp "$TPL/night/settings.json" "$NM/c/.claude/night/"; cp "$TPL/claude-night" "$TPL/protected-paths.txt" "$NM/c/.claude/"
+[ "$(verdict "$NM/c" cycle.night)" = ok ] || fail "cycle.night: каркас красный" "$(detail "$NM/c" cycle.night)"
+grep -v 'claude-night' "$TPL/protected-paths.txt" > "$NM/c/.claude/protected-paths.txt"
+detail "$NM/c" cycle.night | grep -q 'не под защитой: .claude/claude-night' \
+  || fail "cycle.night: незащищённый лаунчер принят" "$(detail "$NM/c" cycle.night)"
+cp "$TPL/protected-paths.txt" "$NM/c/.claude/"; chmod -x "$NM/c/.claude/claude-night"
+detail "$NM/c" cycle.night | grep -q 'нет исполняемого' || fail "cycle.night: неисполняемый лаунчер принят" "$(detail "$NM/c" cycle.night)"
+rm -rf "$NM/c/.claude/night"
+detail "$NM/c" cycle.night | grep -q 'не настроен' || fail "cycle.night: без правил принят" "$(detail "$NM/c" cycle.night)"
+
+# Утренний отчёт: отложенное, отказы контролёра, слияния.
+mkdir -p "$NM/t/sess/subagents"
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"x","content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Self-Modification]. ..."}]}}\n' "$NOW" > "$NM/t/sess/subagents/agent-a.jsonl"
+printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"gh pr merge 5 --merge"}}]}}\n' "$NOW" > "$NM/t/main.jsonl"
+OUT=$(python3 "$SCRIPTS/night_report.py" --cwd "$NM/p" --transcripts "$NM/t" 2>&1)
+printf '%s' "$OUT" | grep -q 'Какой тип id?' || fail "night_report: отложенное не показано" "$OUT"
+printf '%s' "$OUT" | grep -q 'Self-Modification — 1' || fail "night_report: отказ контролёра не найден" "$OUT"
+printf '%s' "$OUT" | grep -q 'слияний PR: 1' || fail "night_report: слияние не посчитано" "$OUT"
+printf '%s' "$OUT" | grep -q 'отложено до человека: 2' || fail "night_report: отложенное не посчитано" "$OUT"
+rm -rf "$NM"
+
 # --- observe.compact: окно автосжатия задаёт проект -------------------------
 # Без явного окна его выбирает Claude Code: на модели с 1M сжатие шло на 150 000.
 OC=$(mktemp -d); mkdir -p "$OC/.claude"; git -C "$OC" init -q
