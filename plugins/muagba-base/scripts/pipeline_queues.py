@@ -20,7 +20,11 @@
   `gh pr create`, где задача названа в заголовке или ветке.
 
 Задача — ключ в описании или тексте поручения, по умолчанию `T\\d{3}`
-(`--task-re` — свой шаблон).
+(`--task-re` — свой шаблон), вместе с номером спеки, если он назван
+(`--spec-re`, по умолчанию трёхзначное число: «015 T007», «спеки 015»).
+Номера задач в каждой спеке начинаются заново: по одному `T008` задачи
+015 и 016 склеивались в одну, и между ними выходили «очереди» по шесть
+часов, которых не было. Спеку ищем сперва в описании, потом в тексте.
 
 Что считается:
 - работа — от поручения или продолжения до остановки агента;
@@ -35,7 +39,7 @@
 
 Запуск:
   python3 pipeline_queues.py [--cwd КАТАЛОГ] [--since ISO] [--until ISO]
-                             [--task-re RE] [--ci] [--csv КАТАЛОГ]
+                             [--task-re RE] [--spec-re RE] [--ci] [--csv КАТАЛОГ]
 Стенограммы — ~/.claude/projects/<проект>/*.jsonl, основные сессии.
 """
 from __future__ import annotations
@@ -87,7 +91,20 @@ NOTIF = re.compile(r"<task-notification>.*?<task-id>([^<]+)</task-id>.*?</task-n
 PR_URL = re.compile(r"/pull/(\d+)")
 
 
-def read_events(files: list[str], task_re: re.Pattern) -> tuple[list[dict], list[tuple]]:
+def task_key(task_re: re.Pattern, spec_re: re.Pattern | None, *texts: str) -> str:
+    """«015 T007»: номер задачи и спека, в которой он назван первым."""
+    m = task_re.search(" ".join(texts))
+    if not m:
+        return ""
+    for t in texts if spec_re else ():
+        s = spec_re.search(t)
+        if s:
+            return f"{s.group(1) if s.groups() else s.group(0)} {m.group(0)}"
+    return m.group(0)
+
+
+def read_events(files: list[str], task_re: re.Pattern,
+                spec_re: re.Pattern | None = None) -> tuple[list[dict], list[tuple]]:
     """Поток событий координатора и его вызовы инструментов (время, класс)."""
     ev: list[dict] = []
     calls: list[tuple] = []
@@ -116,8 +133,9 @@ def read_events(files: list[str], task_re: re.Pattern) -> tuple[list[dict], list
                     calls.append((t, name if name != "Bash" else
                                   (command_class(str(inp.get("command") or "")) or "Bash")))
                     if name in ("Agent", "Task"):
-                        m = task_re.search(f"{inp.get('description', '')} {inp.get('prompt', '')}")
-                        pending[b.get("id")] = {"task": m.group(0) if m else "",
+                        key = task_key(task_re, spec_re, str(inp.get("description") or ""),
+                                       str(inp.get("prompt") or ""))
+                        pending[b.get("id")] = {"task": key,
                                                 "role": inp.get("subagent_type") or "general-purpose",
                                                 "desc": str(inp.get("description") or "")[:80]}
                     elif name == "SendMessage":
@@ -127,9 +145,9 @@ def read_events(files: list[str], task_re: re.Pattern) -> tuple[list[dict], list
                     elif name == "Bash":
                         cmd = str(inp.get("command") or "")
                         if re.search(r"\bgh\b.*\bpr\s+create\b", cmd):
-                            m = task_re.search(cmd)
-                            if m:
-                                pending_pr[b.get("id")] = m.group(0)
+                            key = task_key(task_re, spec_re, cmd)
+                            if key:
+                                pending_pr[b.get("id")] = key
                         m = re.search(r"\bgh\b.*\bpr\s+merge\s+(\d+)", cmd)
                         if m and m.group(1) in pr_task:
                             ev.append({"t": t, "kind": "merge", "task": pr_task[m.group(1)],
@@ -302,6 +320,7 @@ def main() -> int:
     ap.add_argument("--since")
     ap.add_argument("--until")
     ap.add_argument("--task-re", default=r"\bT\d{3}\b")
+    ap.add_argument("--spec-re", default=r"\b(\d{3})\b", help="номер спеки; пустая строка — без спек")
     ap.add_argument("--ci", action="store_true")
     ap.add_argument("--csv")
     ap.add_argument("--transcripts", help="каталог стенограмм (по умолчанию ~/.claude/projects/<проект>)")
@@ -312,7 +331,7 @@ def main() -> int:
     if not files:
         print(f"pipeline_queues: стенограмм нет в {tdir}")
         return 1
-    ev, calls = read_events(files, re.compile(o.task_re))
+    ev, calls = read_events(files, re.compile(o.task_re), re.compile(o.spec_re) if o.spec_re else None)
     lo, hi = ts(o.since), ts(o.until)
     ev = [x for x in ev if (not lo or x["t"] >= lo) and (not hi or x["t"] <= hi)]
     calls = [c for c in calls if (not lo or c[0] >= lo) and (not hi or c[0] <= hi)]

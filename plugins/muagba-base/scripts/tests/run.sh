@@ -973,6 +973,33 @@ PY
 printf '%s' "$OUT" | grep -q 'AskUserQuestion ×1' || fail "pipeline_queues: вопрос владельцу в очереди не показан" "$OUT"
 printf '%s' "$OUT" | grep -q '| T001 | muagba-base:implementer | muagba-base:reviewer | 5.0 | 2.0 |' \
   || fail "pipeline_queues: ожидание доставки уведомления не посчитано" "$OUT"
+
+# Номера задач в спеках начинаются заново: T008 спеки 015 и T008 спеки 016 —
+# разные задачи. Склеенные, они давали «очередь» от конца одной до начала
+# другой — у narta по шесть часов, которых не было.
+python3 - "$PQ/s.jsonl" <<'PY'
+import json, sys
+L = []
+def at(h, m): return f"2026-10-01T{h:02d}:{m:02d}:00Z"
+def use(t, uid, inp): L.append({"type": "assistant", "timestamp": at(*t), "message": {"content": [{"type": "tool_use", "id": uid, "name": "Agent", "input": inp}]}})
+def res(t, uid, aid): L.append({"type": "user", "timestamp": at(*t), "message": {"content": [{"type": "tool_result", "tool_use_id": uid, "content": ""}]}, "toolUseResult": {"agentId": aid, "isAsync": True, "status": "async_launched"}})
+def note(t, aid): L.append({"type": "user", "timestamp": at(*t), "message": {"content": f"<task-notification><task-id>{aid}</task-id></task-notification>"}})
+use((10, 0), "u1", {"description": "015 T008 отказ", "prompt": "задача", "subagent_type": "muagba-base:implementer"})
+res((10, 0), "u1", "A1")
+note((10, 20), "A1")
+use((16, 0), "u2", {"description": "Реализуй", "prompt": "задачу T008 спеки 016", "subagent_type": "muagba-base:implementer"})
+res((16, 0), "u2", "A2")
+note((16, 30), "A2")
+open(sys.argv[1], "w").write("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in L))
+PY
+OUT=$(python3 "$SCRIPTS/pipeline_queues.py" --transcripts "$PQ" --csv "$PQ/out" 2>&1)
+python3 - "$PQ/out" <<'PY' || fail "pipeline_queues: задачи разных спек с одним номером склеены" "$OUT"
+import csv, sys
+w = sorted(r["task"] for r in csv.DictReader(open(sys.argv[1] + "/pipeline-work.csv")))
+q = list(csv.DictReader(open(sys.argv[1] + "/pipeline-queue.csv")))
+assert w == ["015 T008", "016 T008"], w
+assert q == [], q
+PY
 rm -rf "$PQ"
 
 # --- ночной режим (ADR-0016): хук, лаунчер, проба, утренний отчёт ----------
