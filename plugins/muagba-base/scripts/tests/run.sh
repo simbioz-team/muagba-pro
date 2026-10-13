@@ -708,6 +708,37 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$GT/.claude/check.sh"
 [ "$(gate Stop '' 'Готово.')" = "0|" ] || fail "gate-check: зелёная проверка держит ход" ""
 rm -rf "$GT"
 
+# Роль проекта держится по свойству, а не по имени: у narta implementer-high
+# сдавала задачи без гейта с этапа 1.4. Сдаёт код — в её дереве есть то, чего
+# нет в дереве сессии; сессия — последний cwd её стенограммы.
+GS=$(mktemp -d); git -C "$GS" init -q -b main
+mkdir -p "$GS/.claude"; printf '#!/usr/bin/env bash\necho КРАСНО\nexit 1\n' > "$GS/.claude/check.sh"
+chmod +x "$GS/.claude/check.sh"
+git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm init
+git -C "$GS" worktree add -q "$GS/wt" -b t1 2>/dev/null
+printf '{"cwd":"%s"}\n' "$GS" > "$GS/.git/s.jsonl"
+sgate() {  # <agent_type> <cwd> → код гейта SubagentStop
+  python3 -c 'import json,sys;print(json.dumps({"hook_event_name":"SubagentStop","agent_type":sys.argv[1],"last_assistant_message":"Готово.","cwd":sys.argv[2],"transcript_path":sys.argv[3]}))' \
+    "$1" "$2" "$GS/.git/s.jsonl" | CLAUDE_PROJECT_DIR="$GS" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+[ "$(sgate implementer-high "$GS/wt")" = 0 ] \
+  || fail "gate-check: роль проекта с чистым деревом держится гейтом" ""
+echo x > "$GS/wt/x.txt"
+[ "$(sgate implementer-high "$GS/wt")" = 2 ] \
+  || fail "gate-check: роль проекта с правками в своём дереве ушла без гейта" ""
+git -C "$GS/wt" add -A; git -C "$GS/wt" -c user.name=t -c user.email=t@t commit -qm x
+[ "$(sgate implementer-high "$GS/wt")" = 2 ] \
+  || fail "gate-check: роль проекта с новым коммитом ушла без гейта" ""
+# В дереве самой сессии — не держим: правки проверит гейт хода сессии.
+echo y > "$GS/y.txt"
+[ "$(sgate implementer-high "$GS")" = 0 ] \
+  || fail "gate-check: сабагент в дереве сессии держится за чужие правки" ""
+# Сессия ушла в то же дерево — сабагент не сдаёт ничего сверх неё.
+printf '{"cwd":"%s"}\n' "$GS" "$GS/wt" > "$GS/.git/s.jsonl"
+[ "$(sgate implementer-high "$GS/wt")" = 0 ] \
+  || fail "gate-check: дерево сессии взято не из последнего cwd стенограммы" ""
+rm -rf "$GS"
+
 # --- gate-check: уже проверенное зелёным не проверяется заново -------------
 # У narta за этап 1.4 гейт гонял check.sh 131 раз (651 мин), 130 зелёных, и в
 # сотне ходов код перед этим не менялся. Счётчик прогонов — вне дерева.
