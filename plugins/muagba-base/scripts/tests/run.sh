@@ -863,6 +863,14 @@ git -C "$GO/wt2" add -A; git -C "$GO/wt2" -c user.name=t -c user.email=t@t commi
 git -C "$GC" worktree add -q "$GO/wt3" t2 --detach 2>/dev/null; echo r > "$GO/wt3/r.txt"; sub "$GO/wt3" >/dev/null
 grep -qx 'base=[0-9a-f]*' "$GO/changed" && [ "$(sed 1d "$GO/changed")" = r.txt ] \
   || fail "gate-check: новое дерево от зелёного HEAD не получило базу HEAD" "$(cat "$GO/changed")"
+# Коммит координатора поверх зелёного дерева исполнителя: HEAD не зелёный,
+# база — ближайший зелёный предок, в списке — путь коммита и своя правка.
+git -C "$GO/wt3" add -A; git -C "$GO/wt3" -c user.name=t -c user.email=t@t commit -qm r
+echo j > "$GO/wt3/journal.md"; git -C "$GO/wt3" add -A; git -C "$GO/wt3" -c user.name=t -c user.email=t@t commit -qm journal
+G1=$(git -C "$GO/wt3" rev-parse HEAD)
+git -C "$GC" worktree add -q "$GO/wt4" "$G1" --detach 2>/dev/null; echo m > "$GO/wt4/mine.txt"; sub "$GO/wt4" >/dev/null
+grep -qx 'base=[0-9a-f]*' "$GO/changed" && [ "$(sed 1d "$GO/changed" | sort | tr '\n' ' ')" = "journal.md mine.txt " ] \
+  || fail "gate-check: база нового дерева не найдена у зелёного предка HEAD" "$(cat "$GO/changed")"
 
 # Остановка «жду свой фоновый прогон» — не сдача: гейт её не держит и
 # ничего не гоняет. Своё — id задачи есть в стенограмме агента; чужая
@@ -871,6 +879,7 @@ printf '#!/usr/bin/env bash\necho run >> "%s/count"\nexit 1\n' "$GO" > "$GO/wt/.
 NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 printf '{"type":"user","timestamp":"%s","message":{"content":"Command running in background with ID: bmine01."}}\n' "$NOW" > "$GO/agent.jsonl"
 printf '{"type":"user","timestamp":"2020-01-01T00:00:00.000Z","message":{"content":"Command running in background with ID: bdev042."}}\n' >> "$GO/agent.jsonl"
+printf '{"type":"user","message":{"content":"Command running in background with ID: bnots77."}}\n' >> "$GO/agent.jsonl"
 BG=',"agent_id":"a1","agent_transcript_path":"'"$GO/agent.jsonl"'","background_tasks":[{"id":"a1","type":"subagent","status":"running"},{"id":"%s","type":"shell","status":"%s"}]'
 N=$(runs)
 [ "$(sub "$GO/wt" "$(printf "$BG" bmine01 running)")" = 0 ] && [ "$(runs)" = "$N" ] \
@@ -884,6 +893,8 @@ grep -q '"decision": "deferred"' "$GC/.claude/logs/agents.jsonl" \
 # Задача старше отсечки — dev-сервер или сторож, а не прогон: по ней не ждём.
 [ "$(sub "$GO/wt" "$(printf "$BG" bdev042 running)")" = 2 ] \
   || fail "gate-check: бесконечная фоновая задача отпустила сдачу" ""
+[ "$(sub "$GO/wt" "$(printf "$BG" bnots77 running)")" = 2 ] \
+  || fail "gate-check: задача с неизвестным временем запуска отпустила сдачу" ""
 # Stop: своё — только shell-задачи с номером в стенограмме сессии. Фоновый
 # сабагент и shell, оставленный сабагентом, ход координатора не освобождают.
 printf '{"type":"user","timestamp":"%s","message":{"content":"Command running in background with ID: bcoord1."}}\n' "$NOW" > "$GO/main.jsonl"

@@ -2,7 +2,7 @@
 """Отпечаток рабочего дерева для гейта хода.
 
     gate_key.py key <каталог>                 — отпечаток: хеш дерева git
-    gate_key.py head <каталог>                — отпечаток HEAD, как если бы правок не было
+    gate_key.py head <каталог> [<n>]          — отпечатки HEAD и n-1 первых предков
     gate_key.py changed <каталог> <было> <стало> — пути, разные в двух деревьях
     gate_key.py waiting [<предел, с>] < вход хука — живые фоновые задачи агента
 
@@ -77,17 +77,26 @@ def key(cwd: str) -> str:
     return tree.decode().strip() if tree else ""
 
 
-def head(cwd: str) -> str:
-    """Отпечаток HEAD по тем же правилам, что и key: без SKIP. Голое
-    `HEAD^{tree}` с ним несравнимо, если проект держит .claude/logs в git."""
+def head(cwd: str, n: int = 1) -> list[str]:
+    """Отпечатки HEAD и его первых предков (first-parent, до n штук) по
+    тем же правилам, что и key: без SKIP. Голое `<rev>^{tree}` с ключом
+    несравнимо, если проект держит .claude/logs в git."""
+    revs = git(cwd, "rev-list", "--first-parent", f"--max-count={n}", "HEAD")
+    if not revs:
+        return []
+    out = []
     with tempfile.TemporaryDirectory() as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": os.path.join(tmp, "index")}
-        if git(cwd, "read-tree", "HEAD", env=env) is None:
-            return ""
-        if git(cwd, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", SKIP, env=env) is None:
-            return ""
-        tree = git(cwd, "write-tree", env=env)
-    return tree.decode().strip() if tree else ""
+        for rev in revs.decode().split():
+            if git(cwd, "read-tree", rev, env=env) is None:
+                break
+            if git(cwd, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", SKIP, env=env) is None:
+                break
+            tree = git(cwd, "write-tree", env=env)
+            if not tree:
+                break
+            out.append(tree.decode().strip())
+    return out
 
 
 def changed(cwd: str, old: str, new: str) -> list[str]:
@@ -114,7 +123,9 @@ def waiting(hook_input: str, max_age: float = 0, now: float | None = None) -> li
     запуска «running in background with ID: …». Для Stop это
     `transcript_path`, для SubagentStop — `agent_transcript_path`.
 
-    `max_age` (с): задача, запущенная раньше, не в счёт. Тестовый прогон
+    `max_age` (с): задача, запущенная раньше, не в счёт; задача, чьё время
+    запуска не прочесть, при пределе тоже — ошибка стоит лишнего прогона, а
+    не пропущенной проверки. Тестовый прогон
     короче отсечки гейта, а dev-сервер или сторож живут бесконечно, и
     исполнитель с таким в фоне иначе сдавался бы без гейта на каждой
     остановке. Время запуска — первая запись стенограммы с номером задачи.
@@ -148,15 +159,15 @@ def waiting(hook_input: str, max_age: float = 0, now: float | None = None) -> li
         return []
     now = time.time() if now is None else now
     return [t for t in tasks if t in started
-            and not (max_age > 0 and started[t] is not None and now - started[t] > max_age)]
+            and not (max_age > 0 and (started[t] is None or now - started[t] > max_age))]
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
     if len(a) == 2 and a[0] == "key":
         print(key(a[1]))
-    elif len(a) == 2 and a[0] == "head":
-        print(head(a[1]))
+    elif a[:1] == ["head"] and len(a) in (2, 3):
+        print("\n".join(head(a[1], int(a[2]) if len(a) == 3 else 1)))
     elif len(a) == 4 and a[0] == "changed":
         try:
             sys.stdout.write("".join(p + "\n" for p in changed(a[1], a[2], a[3])))

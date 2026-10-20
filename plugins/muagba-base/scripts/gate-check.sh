@@ -147,21 +147,25 @@ if [ -n "$KEY" ] && [ -f "$LAST" ]; then
     fi ;;
   esac
 fi
-# Последнего зелёного в этом дереве нет (оно новое) — база HEAD, если его
-# дерево зелёное для события: исполнитель начинает с головы ветки фичи,
-# которую уже проверил координатор или прошлый исполнитель. Без этого у
+# Последнего зелёного в этом дереве нет (оно новое) — база от ближайшего
+# зелёного для события коммита по первым родителям HEAD (до
+# MUAGBA_GATE_BASE_DEPTH, 20). Исполнитель начинает с головы ветки фичи, а
+# она — слитое дерево прошлого исполнителя плюс коммит журнала
+# координатора: зелёное для SubagentStop — HEAD^, не HEAD. Без этого у
 # narta на 022 первый прогон каждого дерева решал от merge-base и гонял
-# замеры вёрстки: 22 прогона, ~88 мин.
+# замеры вёрстки: 22 прогона, ~88 мин. База только сужает список путей:
+# принимаемое событие то же, и прогон не пропускается.
 if [ -n "$KEY" ] && [ -z "$BASE" ]; then
-  HTREE=$(python3 "$KEYPY" head "$WORK" 2>/dev/null)
-  if [ -n "$HTREE" ] && green_has "$HTREE"; then
+  while read -r HTREE; do
+    [ -n "$HTREE" ] && green_has "$HTREE" || continue
     CHANGED=$(mktemp "${TMPDIR:-/tmp}/muagba-gate-changed.XXXXXX") || CHANGED=""
     if [ -n "$CHANGED" ] && python3 "$KEYPY" changed "$WORK" "$HTREE" "$KEY" > "$CHANGED" 2>/dev/null; then
       BASE=$HTREE
     else
       rm -f "$CHANGED"; CHANGED=""
     fi
-  fi
+    break
+  done < <(python3 "$KEYPY" head "$WORK" "${MUAGBA_GATE_BASE_DEPTH:-20}" 2>/dev/null)
 fi
 trap '[ -n "$CHANGED" ] && rm -f "$CHANGED"' EXIT
 
