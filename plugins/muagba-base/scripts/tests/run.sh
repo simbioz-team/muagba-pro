@@ -857,12 +857,20 @@ git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm c4
 git -C "$GC" worktree add -q "$GO/wt2" -b t2 2>/dev/null; echo q > "$GO/wt2/q.txt"; sub "$GO/wt2" >/dev/null
 [ "$(head -1 "$GO/changed")" = "base=нет" ] \
   || fail "gate-check: база взята из чужого рабочего дерева" "$(cat "$GO/changed")"
+# Новое дерево от головы, зелёной для события, — база HEAD: исполнитель
+# начинает с ветки, уже проверенной, и проект видит только свою правку.
+git -C "$GO/wt2" add -A; git -C "$GO/wt2" -c user.name=t -c user.email=t@t commit -qm q
+git -C "$GC" worktree add -q "$GO/wt3" t2 --detach 2>/dev/null; echo r > "$GO/wt3/r.txt"; sub "$GO/wt3" >/dev/null
+grep -qx 'base=[0-9a-f]*' "$GO/changed" && [ "$(sed 1d "$GO/changed")" = r.txt ] \
+  || fail "gate-check: новое дерево от зелёного HEAD не получило базу HEAD" "$(cat "$GO/changed")"
 
 # Остановка «жду свой фоновый прогон» — не сдача: гейт её не держит и
 # ничего не гоняет. Своё — id задачи есть в стенограмме агента; чужая
 # задача (сосед, координатор) сдачу не освобождает.
 printf '#!/usr/bin/env bash\necho run >> "%s/count"\nexit 1\n' "$GO" > "$GO/wt/.claude/check.sh"
-printf '{"type":"user","message":{"content":"Command running in background with ID: bmine01."}}\n' > "$GO/agent.jsonl"
+NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+printf '{"type":"user","timestamp":"%s","message":{"content":"Command running in background with ID: bmine01."}}\n' "$NOW" > "$GO/agent.jsonl"
+printf '{"type":"user","timestamp":"2020-01-01T00:00:00.000Z","message":{"content":"Command running in background with ID: bdev042."}}\n' >> "$GO/agent.jsonl"
 BG=',"agent_id":"a1","agent_transcript_path":"'"$GO/agent.jsonl"'","background_tasks":[{"id":"a1","type":"subagent","status":"running"},{"id":"%s","type":"shell","status":"%s"}]'
 N=$(runs)
 [ "$(sub "$GO/wt" "$(printf "$BG" bmine01 running)")" = 0 ] && [ "$(runs)" = "$N" ] \
@@ -873,9 +881,23 @@ grep -q '"decision": "deferred"' "$GC/.claude/logs/agents.jsonl" \
   || fail "gate-check: чужая фоновая задача отпустила сдачу исполнителя" ""
 [ "$(sub "$GO/wt" "$(printf "$BG" bmine01 completed)")" = 2 ] \
   || fail "gate-check: завершённая фоновая задача отпустила сдачу" ""
-printf '{"hook_event_name":"Stop","last_assistant_message":"Жду.","cwd":"%s","session_id":"s","background_tasks":[{"id":"x","type":"subagent","status":"running"}]}' "$GC" \
-  | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
-[ $? = 0 ] || fail "gate-check: ход координатора с живыми фоновыми задачами держится гейтом" ""
+# Задача старше отсечки — dev-сервер или сторож, а не прогон: по ней не ждём.
+[ "$(sub "$GO/wt" "$(printf "$BG" bdev042 running)")" = 2 ] \
+  || fail "gate-check: бесконечная фоновая задача отпустила сдачу" ""
+# Stop: своё — только shell-задачи с номером в стенограмме сессии. Фоновый
+# сабагент и shell, оставленный сабагентом, ход координатора не освобождают.
+printf '{"type":"user","timestamp":"%s","message":{"content":"Command running in background with ID: bcoord1."}}\n' "$NOW" > "$GO/main.jsonl"
+stop() {  # <задачи json> → код гейта Stop
+  printf '{"hook_event_name":"Stop","last_assistant_message":"Готово.","cwd":"%s","session_id":"s","transcript_path":"%s","background_tasks":%s}' "$GO/wt" "$GO/main.jsonl" "$1" \
+    | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+[ "$(stop '[{"id":"a9","type":"subagent","status":"running"}]')" = 2 ] \
+  || fail "gate-check: фоновый сабагент отпустил ход координатора без гейта" ""
+[ "$(stop '[{"id":"bmine01","type":"shell","status":"running"}]')" = 2 ] \
+  || fail "gate-check: shell сабагента отпустил ход координатора без гейта" ""
+N=$(runs)
+[ "$(stop '[{"id":"bcoord1","type":"shell","status":"running"}]')" = 0 ] && [ "$(runs)" = "$N" ] \
+  || fail "gate-check: ход координатора со своим фоновым прогоном держится гейтом" "$(runs)"
 rm -rf "$GC" "$GO"
 
 # --- gate-check: проверка, не уложившаяся во время ------------------------

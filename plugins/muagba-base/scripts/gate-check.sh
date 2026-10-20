@@ -46,10 +46,14 @@
 # Остановка «жду свой фоновый прогон» — не сдача: агент проснётся по
 # уведомлению и остановится снова. Такие остановки гейт не держит и
 # ничего не гоняет (decision=deferred), если во входе хука есть живые
-# фоновые задачи самого агента (gate_key.py waiting). У narta на спеке 022
-# это 22 прогона, ~1,5 ч нагрузки рядом с его же тестами. Предел: агент,
-# оставивший бесконечную фоновую задачу, на каждой остановке ждёт, и гейт
-# не идёт, пока она жива; MUAGBA_GATE_ALWAYS=1 снимает и это.
+# фоновые shell-задачи самого агента (gate_key.py waiting): фоновый
+# сабагент не в счёт. У narta на спеке 022 это 22 прогона, ~1,5 ч нагрузки
+# рядом с его же тестами. Задача старше MUAGBA_GATE_DEFER_MAX_S (по
+# умолчанию — отсечка гейта) — не прогон, а dev-сервер или сторож: по ней
+# не откладывается. Предел: такая задача моложе отсечки на последней
+# остановке исполнителя — сдача без гейта; дерево исполнителя тогда не в
+# списке зелёных, и его проверит Stop координатора после слияния.
+# MUAGBA_GATE_ALWAYS=1 отключает отсрочку.
 #
 # Каждый прогон — в журнал с длительностью: decision=pass|block|timeout|
 # released_on_question и duration_ms; пропуски — cached и deferred.
@@ -80,7 +84,7 @@ CHECK="$WORK/.claude/check.sh"
 
 KEYPY="$(dirname "${BASH_SOURCE[0]}")/gate_key.py"
 if [ -z "${MUAGBA_GATE_ALWAYS:-}" ]; then
-  WAIT=$(printf '%s' "$HOOK_INPUT" | python3 "$KEYPY" waiting 2>/dev/null)
+  WAIT=$(printf '%s' "$HOOK_INPUT" | python3 "$KEYPY" waiting "${MUAGBA_GATE_DEFER_MAX_S:-${MUAGBA_GATE_TIMEOUT:-1500}}" 2>/dev/null)
   if [ -n "$WAIT" ]; then
     log_event gate decision=deferred background="$WAIT"
     exit 0
@@ -142,6 +146,22 @@ if [ -n "$KEY" ] && [ -f "$LAST" ]; then
       fi
     fi ;;
   esac
+fi
+# Последнего зелёного в этом дереве нет (оно новое) — база HEAD, если его
+# дерево зелёное для события: исполнитель начинает с головы ветки фичи,
+# которую уже проверил координатор или прошлый исполнитель. Без этого у
+# narta на 022 первый прогон каждого дерева решал от merge-base и гонял
+# замеры вёрстки: 22 прогона, ~88 мин.
+if [ -n "$KEY" ] && [ -z "$BASE" ]; then
+  HTREE=$(python3 "$KEYPY" head "$WORK" 2>/dev/null)
+  if [ -n "$HTREE" ] && green_has "$HTREE"; then
+    CHANGED=$(mktemp "${TMPDIR:-/tmp}/muagba-gate-changed.XXXXXX") || CHANGED=""
+    if [ -n "$CHANGED" ] && python3 "$KEYPY" changed "$WORK" "$HTREE" "$KEY" > "$CHANGED" 2>/dev/null; then
+      BASE=$HTREE
+    else
+      rm -f "$CHANGED"; CHANGED=""
+    fi
+  fi
 fi
 trap '[ -n "$CHANGED" ] && rm -f "$CHANGED"' EXIT
 
