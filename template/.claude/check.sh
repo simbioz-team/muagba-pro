@@ -11,9 +11,23 @@
 # раньше.
 #
 # Параллельные прогоны в одном дереве (гейт и фоновый прогон агента) не
-# должны писать общих файлов: покрытие — в файл на запуск
+# должны делить ничего изменяемого: покрытие — в файл на запуск
 # (COVERAGE_FILE=.coverage.$$ или параллельный режим), тестовая база — с
-# уникальным именем. Иначе проверка краснеет при зелёных тестах.
+# уникальным именем, серверы тестов (API, dev-сервер, браузерные наборы) —
+# на свободном порту, выбранном при запуске, а не на зашитом или
+# вычисленном из пути дерева: у narta гейт и фоновый прогон исполнителя
+# в одном дереве четыре раза столкнулись на порту набора вёрстки. Иначе
+# проверка краснеет при зелёных тестах.
+#
+# Что изменилось с последнего зелёного прогона гейта в этом дереве, гейт
+# передаёт сам: MUAGBA_GATE_CHANGED — файл со списком путей (по строке),
+# MUAGBA_GATE_BASE — то зелёное дерево git. Дорогие условные шаги решай по
+# нему (gate_touches ниже), а не по всей ветке: ветка фичи с первых задач
+# трогает всё, и шаг идёт на каждом прогоне. Нет переменной (первый прогон
+# в дереве, полная проверка, CI) — gate_touches говорит «да».
+#
+# Ход координатора (Stop) засчитывает зелёное исполнителя (SubagentStop) на
+# том же дереве, обратное — нет. Значит, часть Stop не шире SubagentStop.
 #
 # Пока проект не настроен — автоопределение. Как только стек выбран,
 # замени тело на явные команды: явное лучше угаданного.
@@ -22,28 +36,61 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 run() { echo "==> $*"; "$@" || exit 1; }
 
+# gate_touches <префикс…> — менялся ли с последнего зелёного прогона гейта
+# путь под одним из префиксов. Без сведений от гейта — да.
+gate_touches() {
+  [ -n "${MUAGBA_GATE_CHANGED:-}" ] && [ -f "$MUAGBA_GATE_CHANGED" ] || return 0
+  local path p
+  while IFS= read -r path; do
+    for p in "$@"; do case "$path" in "$p"*) return 0 ;; esac; done
+  done < "$MUAGBA_GATE_CHANGED"
+  return 1
+}
+# gate_only <префикс…> — менялись только пути под этими префиксами (и
+# хоть что-то менялось). Без сведений от гейта — нет.
+gate_only() {
+  [ -n "${MUAGBA_GATE_CHANGED:-}" ] && [ -s "$MUAGBA_GATE_CHANGED" ] || return 1
+  local path p hit
+  while IFS= read -r path; do
+    hit=
+    for p in "$@"; do case "$path" in "$p"*) hit=1 ;; esac; done
+    [ -n "$hit" ] || return 1
+  done < "$MUAGBA_GATE_CHANGED"
+  return 0
+}
+has_target() {  # <имя> — цель в Makefile, justfile или скрипт npm
+  { [ -f Makefile ] && grep -qE "^$1:" Makefile; } \
+    || { [ -f justfile ] && grep -qE "^$1:" justfile; } \
+    || { [ -f package.json ] && grep -q "\"${1/-/:}\"" package.json; }
+}
+run_target() {  # <имя>
+  if [ -f Makefile ] && grep -qE "^$1:" Makefile; then run make "$1"
+  elif [ -f justfile ] && grep -qE "^$1:" justfile; then run just "$1"
+  else run npm run "${1/-/:}"; fi
+}
+
 # Заполненность документов рамок. Мягко: новый проект не должен быть красным
 # только из-за пустых заготовок. Когда рамки дописаны — убери --soft,
 # и незаполненный слот начнёт ронять проверку.
 python3 .claude/check-frames.py --soft
 
-# Быстрая часть для гейта хода — если проект её завёл.
 if [ -n "${MUAGBA_GATE_EVENT:-}" ]; then
-  if [ -f Makefile ] && grep -qE '^check-quick:' Makefile; then
-    run make check-quick; exit 0
-  elif [ -f justfile ] && grep -qE '^check-quick:' justfile; then
-    run just check-quick; exit 0
-  elif [ -f package.json ] && grep -q '"check:quick"' package.json; then
-    run npm run check:quick; exit 0
+  # С последнего зелёного правились только документы и спеки (журнал,
+  # отметки задач) — короткий набор, если проект его завёл: цель
+  # check-docs проверяет всё, что в этих каталогах можно сломать (формы
+  # спек, ссылки, линт markdown). Нет цели — идём дальше, как обычно:
+  # пропуск без неё снял бы проверку изменённого.
+  if gate_only docs/ specs/ && has_target check-docs; then
+    run_target check-docs; exit 0
+  fi
+  # Быстрая часть для гейта хода — если проект её завёл.
+  if has_target check-quick; then
+    run_target check-quick; exit 0
   fi
 fi
 
-if [ -f Makefile ] && grep -qE '^check:' Makefile; then
-  run make check
-elif [ -f justfile ] && grep -qE '^check:' justfile; then
-  run just check
-elif [ -f package.json ] && grep -q '"check"' package.json; then
-  run npm run check
+if has_target check; then
+  run_target check
 else
   echo "check.sh: проверка кода ещё не настроена (этап Э6) — гейта нет."
 fi

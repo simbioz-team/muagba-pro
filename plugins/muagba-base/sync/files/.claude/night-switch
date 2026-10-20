@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Ночь в текущей сессии (ADR-0016 базы muagba-pro): on | off | status.
+#   ./.claude/night-switch on      — ночные правила в ~/.claude/settings.json
+#   ./.claude/night-switch off     — убрать ровно добавленное
+#   ./.claude/night-switch status
+#
+# Обёртка над night_switch.py установленного плагина. Нужна ради
+# постоянного пути: путь плагина меняется с каждой версией, а разрешение в
+# .claude/settings.json пишется один раз — `Bash(./.claude/night-switch *)`.
+# С ним /muagba-base:night и /muagba-base:day переключают ночь сами, без
+# строки в терминале. Порог прежний: on не включит ночь без утверждённого
+# человеком на сегодня (.claude/night/approved.json), а скил — без его «да».
+#
+# Сессия — из CLAUDE_CODE_SESSION_ID, его Claude Code даёт командам агента.
+set -uo pipefail
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# Плагин ищется по списку установленных, как в claude-night: сначала
+# установка этого проекта, затем пользовательская.
+PLUGIN_SCRIPTS=$(python3 - "$ROOT" <<'PY'
+import json, os, subprocess, sys
+root = sys.argv[1]
+r = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                   capture_output=True, text=True)
+main = os.path.dirname(r.stdout.strip()) if r.returncode == 0 else root
+try:
+    d = json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))
+except (OSError, ValueError):
+    sys.exit(0)
+es = d.get("plugins", {}).get("muagba-base@muagba-pro", [])
+es = sorted(es, key=lambda e: (e.get("projectPath") not in (root, main), e.get("scope") != "user"))
+for e in es:
+    p = os.path.join(e.get("installPath", ""), "scripts")
+    if os.path.isfile(os.path.join(p, "night_switch.py")):
+        print(p)
+        break
+PY
+)
+[ -n "$PLUGIN_SCRIPTS" ] || { echo "night-switch: не найден установленный плагин muagba-base (≥ 0.20.2)." >&2; exit 1; }
+exec python3 "$PLUGIN_SCRIPTS/night_switch.py" "$@" --cwd "$PWD"

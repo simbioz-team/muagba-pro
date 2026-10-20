@@ -2,18 +2,26 @@
 name: day
 description: Утро — выключить ночной режим и разобрать ночь. Убирает ночные правила из настроек человека, снимает пометку ночи и показывает утренний отчёт.
 disable-model-invocation: true
+allowed-tools: Bash(./.claude/night-switch *)
 ---
 
 # Утро: выключить ночь
 
-1. Дай человеку строку и попроси выполнить её с `!` впереди:
+1. **Выключи ночь сам** — из корня проекта:
 
-   ```
-   ! python3 "${CLAUDE_PLUGIN_ROOT}/scripts/night_switch.py" off
+   ```bash
+   ./.claude/night-switch off
    ```
 
    Она убирает из `~/.claude/settings.json` ровно то, что добавила ночь, и
    снимает пометку. Пока она не выполнена, ночные правила видят все сессии
    в режиме `auto`.
+
+   Нет `.claude/night-switch` (проект ещё не получил его от базы) — дай
+   человеку строку и попроси выполнить её с `!` впереди:
+
+   ```
+   ! python3 "${CLAUDE_PLUGIN_ROOT}/scripts/night_switch.py" off
+   ```
 2. Режим `auto` человек оставляет или выключает сам (Shift+Tab).
 3. Проведи утренний разбор по `/muagba-base:night-report`.

@@ -774,20 +774,33 @@ echo n2 > "$GC/new.txt"; gc >/dev/null
 [ "$(runs)" = 4 ] || fail "gate-check: правка неотслеживаемого файла не проверена" "$(runs)"
 gc MUAGBA_GATE_ALWAYS=1 >/dev/null
 [ "$(runs)" = 5 ] || fail "gate-check: MUAGBA_GATE_ALWAYS не заставил проверить" "$(runs)"
-# Красный стирает запомненное: вернулись к проверенному зелёным дереву —
-# проверяется заново, а не отпускается по старому отпечатку.
+# Отпечаток — содержимое дерева: вернулись к дереву, уже проверенному
+# зелёным, — оно не проверяется заново, красный в промежутке не важен.
 touch "$GC/bad.txt"; [ "$(gc)" = 2 ] || fail "gate-check: красный отпущен" ""
 rm "$GC/bad.txt"; gc >/dev/null
-[ "$(runs)" = 7 ] || fail "gate-check: после красного дерево не проверено заново" "$(runs)"
+[ "$(runs)" = 6 ] || fail "gate-check: зелёное дерево после красного проверено заново" "$(runs)"
+# Коммит без правок — то же дерево: у narta на спеке 022 это 22 прогона.
+git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm same; gc >/dev/null
+[ "$(runs)" = 6 ] || fail "gate-check: коммит без правок проверен заново" "$(runs)"
 # Предел, названный в описании: изменение вне git отпечаток не видит.
 touch "$GO/outside"; gc >/dev/null
-[ "$(runs)" = 7 ] || fail "gate-check: изменение вне дерева вдруг заметно — описание врёт" "$(runs)"
+[ "$(runs)" = 6 ] || fail "gate-check: изменение вне дерева вдруг заметно — описание врёт" "$(runs)"
 # Проверка, сама поправившая дерево, исходное состояние зелёным не отмечает:
 # она прошла на том, что починила. Агент откатил починку — проверять заново.
 echo unformatted > "$GC/f.txt"; gc >/dev/null
 [ "$(cat "$GC/f.txt")" = formatted ] || fail "gate-check: тестовый форматтер не сработал" ""
 echo unformatted > "$GC/f.txt"; gc >/dev/null
-[ "$(runs)" = 9 ] || fail "gate-check: состояние до починки проверкой принято за проверенное" "$(runs)"
+[ "$(runs)" = 8 ] || fail "gate-check: состояние до починки проверкой принято за проверенное" "$(runs)"
+# Зелёный прогон — в журнал с длительностью: статистику не восстанавливать
+# из стенограмм (у narta сборщик насчитал 30 красных вместо 14).
+python3 - "$GC/.claude/logs/agents.jsonl" <<'PY' || fail "gate-check: зелёный прогон не записан с duration_ms" "$(tail -3 "$GC/.claude/logs/agents.jsonl")"
+import json, sys
+recs = [json.loads(l) for l in open(sys.argv[1]) if '"gate"' in l]
+p = [r for r in recs if r.get("decision") == "pass"]
+assert p and all(r.get("duration_ms", "").isdigit() for r in p), recs
+b = [r for r in recs if r.get("decision") == "block"]
+assert b and all(r.get("duration_ms", "").isdigit() for r in b), recs
+PY
 # Проверка знает, кто её вызвал, и отпечаток у каждого события свой:
 # быстрое зелёное хода координатора не засчитывается сдаче исполнителя.
 rm -f "$GC/f.txt.bak"; cat > "$GC/.claude/check.sh" <<SH
@@ -804,6 +817,65 @@ printf '{"hook_event_name":"SubagentStop","agent_type":"implementer","last_assis
   | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
 [ "$(tail -1 "$GO/events")" = SubagentStop ] \
   || fail "gate-check: сдача исполнителя засчитана по зелёному ходу координатора" "$(cat "$GO/events")"
+# А зелёное исполнителя ходу координатора засчитывается: часть Stop не шире.
+echo s > "$GC/s.txt"
+printf '{"hook_event_name":"SubagentStop","agent_type":"implementer","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' "$GC" \
+  | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
+N=$(wc -l < "$GO/events" | tr -d ' '); gc >/dev/null
+[ "$(wc -l < "$GO/events" | tr -d ' ')" = "$N" ] \
+  || fail "gate-check: ход координатора перепроверил зелёное исполнителя" "$(cat "$GO/events")"
+
+# Зелёное одного рабочего дерева засчитывается другому: ff-слияние в
+# дерево координатора приносит дерево, проверенное гейтом исполнителя.
+git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm c3
+git -C "$GC" worktree add -q "$GO/wt" -b task 2>/dev/null
+echo w > "$GO/wt/w.txt"; git -C "$GO/wt" add -A; git -C "$GO/wt" -c user.name=t -c user.email=t@t commit -qm w
+sub() {  # <cwd> [json-хвост] → код гейта SubagentStop
+  printf '{"hook_event_name":"SubagentStop","agent_type":"implementer","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"%s}' "$1" "${2:-}" \
+    | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+N=$(runs); sub "$GO/wt" >/dev/null
+[ "$(runs)" = $((N + 1)) ] || fail "gate-check: сдача в рабочем дереве не проверена" "$(runs)"
+git -C "$GC" merge -q --ff-only task; gc >/dev/null
+[ "$(runs)" = $((N + 1)) ] || fail "gate-check: ff-слияние проверенного дерева проверено заново" "$(runs)"
+
+# Проверка получает пути, изменённые с последнего зелёного этого дерева.
+cat > "$GC/.claude/check.sh" <<SH
+#!/usr/bin/env bash
+echo run >> "$GO/count"
+{ echo "base=\${MUAGBA_GATE_BASE:-нет}"; cat "\${MUAGBA_GATE_CHANGED:-/dev/null}"; } > "$GO/changed"
+exit 0
+SH
+gc >/dev/null
+grep -qx 'base=[0-9a-f]*' "$GO/changed" && grep -qx '.claude/check.sh' "$GO/changed" \
+  || fail "gate-check: проверке не переданы изменения с последнего зелёного" "$(cat "$GO/changed")"
+echo z > "$GC/z.txt"; gc >/dev/null
+[ "$(sed 1d "$GO/changed")" = z.txt ] \
+  || fail "gate-check: изменения считаны не от последнего зелёного дерева" "$(cat "$GO/changed")"
+# Первое зелёное в новом рабочем дереве — базы нет, проект решает сам.
+git -C "$GC" add -A; git -C "$GC" -c user.name=t -c user.email=t@t commit -qm c4
+git -C "$GC" worktree add -q "$GO/wt2" -b t2 2>/dev/null; echo q > "$GO/wt2/q.txt"; sub "$GO/wt2" >/dev/null
+[ "$(head -1 "$GO/changed")" = "base=нет" ] \
+  || fail "gate-check: база взята из чужого рабочего дерева" "$(cat "$GO/changed")"
+
+# Остановка «жду свой фоновый прогон» — не сдача: гейт её не держит и
+# ничего не гоняет. Своё — id задачи есть в стенограмме агента; чужая
+# задача (сосед, координатор) сдачу не освобождает.
+printf '#!/usr/bin/env bash\necho run >> "%s/count"\nexit 1\n' "$GO" > "$GO/wt/.claude/check.sh"
+printf '{"type":"user","message":{"content":"Command running in background with ID: bmine01."}}\n' > "$GO/agent.jsonl"
+BG=',"agent_id":"a1","agent_transcript_path":"'"$GO/agent.jsonl"'","background_tasks":[{"id":"a1","type":"subagent","status":"running"},{"id":"%s","type":"shell","status":"%s"}]'
+N=$(runs)
+[ "$(sub "$GO/wt" "$(printf "$BG" bmine01 running)")" = 0 ] && [ "$(runs)" = "$N" ] \
+  || fail "gate-check: остановка с живым своим фоновым прогоном держится гейтом" "$(runs)"
+grep -q '"decision": "deferred"' "$GC/.claude/logs/agents.jsonl" \
+  || fail "gate-check: отложенный гейт не записан в журнал" ""
+[ "$(sub "$GO/wt" "$(printf "$BG" bother9 running)")" = 2 ] \
+  || fail "gate-check: чужая фоновая задача отпустила сдачу исполнителя" ""
+[ "$(sub "$GO/wt" "$(printf "$BG" bmine01 completed)")" = 2 ] \
+  || fail "gate-check: завершённая фоновая задача отпустила сдачу" ""
+printf '{"hook_event_name":"Stop","last_assistant_message":"Жду.","cwd":"%s","session_id":"s","background_tasks":[{"id":"x","type":"subagent","status":"running"}]}' "$GC" \
+  | CLAUDE_PROJECT_DIR="$GC" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
+[ $? = 0 ] || fail "gate-check: ход координатора с живыми фоновыми задачами держится гейтом" ""
 rm -rf "$GC" "$GO"
 
 # --- gate-check: проверка, не уложившаяся во время ------------------------
@@ -828,6 +900,26 @@ ts = [h["timeout"] for gs in d["hooks"].values() for g in gs for h in g["hooks"]
 assert ts and all(t > 1500 for t in ts), ts
 PY
 rm -rf "$GS" "$GSO"
+
+# --- каркас check.sh: короткий набор по изменениям от гейта ----------------
+# Правились только docs/ и specs/ — цель check-docs, если проект её завёл;
+# иначе — быстрая часть, как обычно. Без сведений от гейта — тоже как обычно.
+TC=$(mktemp -d); mkdir -p "$TC/.claude"
+cp "$SCRIPTS/../../../template/.claude/check.sh" "$TC/.claude/check.sh"
+printf 'import sys\n' > "$TC/.claude/check-frames.py"
+printf 'check-docs:\n\t@echo DOCS\ncheck-quick:\n\t@echo QUICK\ncheck:\n\t@echo FULL\n' > "$TC/Makefile"
+tcheck() {  # <изменённые пути через пробел или «-»> [событие] → последняя строка
+  local ch=""
+  if [ "$1" != - ]; then ch="$TC/changed"; printf '%s\n' $1 > "$ch"; fi
+  (cd "$TC" && env ${2:+MUAGBA_GATE_EVENT=$2} ${ch:+MUAGBA_GATE_CHANGED=$ch} bash .claude/check.sh 2>&1 | tail -1)
+}
+[ "$(tcheck 'docs/a.md specs/1/tasks.md' Stop)" = DOCS ] || fail "каркас check.sh: правка только документов не пошла коротким набором" "$(tcheck 'docs/a.md' Stop)"
+[ "$(tcheck 'docs/a.md src/x.py' Stop)" = QUICK ] || fail "каркас check.sh: правка кода прошла коротким набором" ""
+[ "$(tcheck - Stop)" = QUICK ] || fail "каркас check.sh: без сведений гейта не быстрая часть" ""
+[ "$(tcheck 'docs/a.md')" = FULL ] || fail "каркас check.sh: полная проверка ушла в короткий набор" ""
+printf 'check-quick:\n\t@echo QUICK\ncheck:\n\t@echo FULL\n' > "$TC/Makefile"
+[ "$(tcheck 'docs/a.md' SubagentStop)" = QUICK ] || fail "каркас check.sh: без цели check-docs проверка документов снята" ""
+rm -rf "$TC"
 
 # --- журнал: ходы, красный гейт, запреты хуков ------------------------------
 # Пишется только в проект, который завёл .claude/logs/; текста команды в нём
@@ -1149,6 +1241,25 @@ sw off >/dev/null
 python3 -c "import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); assert a==b, (a,b)" \
   "$NH/.claude/settings.json" "$NM/user.before.json" || fail "night_switch off: настройки человека не вернулись к прежним" "$(cat "$NH/.claude/settings.json")"
 [ ! -e "$NH/.claude/muagba-night/sessions/S1.json" ] || fail "night_switch off: пометка ночи осталась" ""
+
+# Обёртка каркаса .claude/night-switch: постоянный путь для разрешения,
+# находит плагин по installed_plugins.json, сессию берёт из окружения.
+cp "$TPL/night-switch" "$NM/np/.claude/"
+mkdir -p "$NM/plug/scripts"; cp "$SCRIPTS"/night_*.py "$NM/plug/scripts/"
+printf '{"plugins":{"muagba-base@muagba-pro":[{"scope":"user","installPath":"%s"}]}}' "$NM/plug" > "$NM/inst.json"
+mkdir -p "$NH/.claude/plugins"; cp "$NM/inst.json" "$NH/.claude/plugins/installed_plugins.json"
+(cd "$NM/np" && HOME="$NH" CLAUDE_CODE_SESSION_ID=S3 ./.claude/night-switch on >/dev/null) || fail "night-switch: ночь не включилась" ""
+[ -e "$NH/.claude/muagba-night/sessions/S3.json" ] || fail "night-switch: сессия не взята из CLAUDE_CODE_SESSION_ID" ""
+(cd "$NM/np" && HOME="$NH" ./.claude/night-switch status) | grep -q 'сессии S3' || fail "night-switch status" ""
+(cd "$NM/np" && HOME="$NH" ./.claude/night-switch off >/dev/null)
+[ ! -e "$NH/.claude/muagba-night/sessions/S3.json" ] || fail "night-switch off: пометка осталась" ""
+rm "$NH/.claude/plugins/installed_plugins.json"
+(cd "$NM/np" && HOME="$NH" ./.claude/night-switch status >/dev/null 2>&1) && fail "night-switch: без плагина не отказал" ""
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Bash(./.claude/night-switch *)' in d['permissions']['allow']" "$TPL/settings.json" \
+  || fail "каркас: нет разрешения на .claude/night-switch" ""
+for s in night day; do
+  grep -q '^allowed-tools: Bash(./.claude/night-switch \*)' "$SCRIPTS/../skills/$s/SKILL.md" || fail "скил $s: нет allowed-tools на night-switch" ""
+done
 
 # Старт сессии: подготовка есть, а ночного режима нет — предупредить.
 mkdir -p "$NM/s/.claude/night"; git -C "$NM/s" init -q

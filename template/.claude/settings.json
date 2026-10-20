@@ -3,6 +3,7 @@
   "permissions": {
     "allow": [
       "Bash(./.claude/check.sh)",
+      "Bash(./.claude/night-switch *)",
       "Bash(git status *)",
       "Bash(git diff *)",
       "Bash(git log *)",
