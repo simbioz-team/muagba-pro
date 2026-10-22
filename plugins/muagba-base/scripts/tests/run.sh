@@ -1326,6 +1326,23 @@ printf '%s' "$OUT" | grep -q 'Какой тип id?' || fail "night_report: от
 printf '%s' "$OUT" | grep -q 'Self-Modification — 1' || fail "night_report: отказ контролёра не найден" "$OUT"
 printf '%s' "$OUT" | grep -q 'слияний PR: 1' || fail "night_report: слияние не посчитано" "$OUT"
 printf '%s' "$OUT" | grep -q 'отложено до человека: 2' || fail "night_report: отложенное не посчитано" "$OUT"
+# Решения по умолчанию — из коммитов ночи во всех ветках, строки таблиц
+# (реестры) — нет; логи — из основного checkout'а, даже из рабочего дерева.
+NR="$NM/nr"; git init -q -b main "$NR"; mkdir -p "$NR/.claude/logs"
+printf 'Вопрос из основного.\n' > "$NR/.claude/logs/morning.md"
+printf '.claude/logs/\n' > "$NR/.gitignore"; git -C "$NR" add -A; git -C "$NR" -c user.name=t -c user.email=t@t commit -qm init
+git -C "$NR" worktree add -q "$NR/wt" -b night
+printf -- '- T003: без типа — в «не разобран» (Спросить: да)\n| docs/x.md | Спросить: да в реестре |\n' > "$NR/wt/journal.md"
+git -C "$NR/wt" add -A; git -C "$NR/wt" -c user.name=t -c user.email=t@t commit -qm night
+OUT=$(python3 "$SCRIPTS/night_report.py" --cwd "$NR/wt" --transcripts "$NM/t" 2>&1)
+printf '%s' "$OUT" | grep -q 'T003: без типа' || fail "night_report: решение «Спросить: да» из коммита не показано" "$OUT"
+printf '%s' "$OUT" | grep -q 'в реестре' && fail "night_report: строка таблицы принята за решение" "$OUT"
+printf '%s' "$OUT" | grep -q 'Вопрос из основного' || fail "night_report: из рабочего дерева не прочитан morning.md основного" "$OUT"
+# Лаунчер показывает «что делать вместо» рядом с опасным.
+printf '{"date":"%s","dangerous":["бюджет MCP"],"instead":["T018: сжать описания, T021 не ждёт"]}' "$(date +%F)" > "$NM/appr.json"
+echo '{}' > "$NM/base.json"
+python3 "$SCRIPTS/night_rules.py" "$NM/base.json" "$NM/appr.json" "$NM/merged.json" 2>&1 | grep -q 'если не выйдет: T018' \
+  || fail "night_rules: «что делать вместо» не показано" "$(python3 "$SCRIPTS/night_rules.py" "$NM/base.json" "$NM/appr.json" "$NM/merged.json" 2>&1)"
 rm -rf "$NM"
 
 # --- каркас в репозитории базы — не проект -------------------------------
@@ -1523,6 +1540,70 @@ printf '{"tool_input":{"command":"rm -rf wt"},"cwd":"%s"}' "$WD" \
   | CLAUDE_PROJECT_DIR="$WD" bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1
 [ $? -eq 2 ] || fail "guard-bash: rm -rf по дереву не запрещён" ""
 rm -rf "$WD"
+
+# --- task_pairs: пара задач по графу, файлам, миграциям, мерам -------------
+TP=$(mktemp -d); git init -q -b main "$TP"; mkdir -p "$TP/.claude"
+cat > "$TP/tasks.md" <<'MD'
+**Зависимости:** T001 → T002, T003 → T004–T005 → T006
+
+- [ ] T001 схема
+  Файлы: `db/migrations/0001.py`
+- [ ] T002 API вопросов
+  Файлы: `api/v1/__init__.py`, `api/questions.py`, `openapi.json`
+  Заметка: для T003 и T006 — порядок видимость → архив → роль.
+- [ ] T003 API обсуждения
+  Файлы: `api/v1/__init__.py`, `api/discussion.py`, `openapi.json`
+- [ ] T004 инструменты MCP
+  Файлы: `mcp/tools_a.py`
+  Мера: каталог MCP
+- [ ] T005 ещё инструменты
+  Файлы: `mcp/tools_b.py`
+  Мера: каталог MCP
+- [ ] T006 миграция и поле
+  Файлы: `db/migrations/0002.py`, `core/entities.py`
+- [ ] T007 вне графа, зависит от T002
+  Файлы: `core/other.py`
+- [ ] T008 вне графа
+  Файлы: `core/entities.py`, `web/a.ts`
+- [ ] T009 веб и уведомление
+  Файлы: `web/b.ts`
+  Сущность: Notification
+- [ ] T010 веб и уведомление
+  Файлы: `web/c.ts`
+  Сущность: notification
+- [ ] T011 без файлов
+MD
+tp() { python3 "$SCRIPTS/task_pairs.py" "$TP/tasks.md" "$1" "$2" --root "$TP" 2>&1 || true; }
+tpc() { python3 "$SCRIPTS/task_pairs.py" "$TP/tasks.md" "$1" "$2" --root "$TP" >/dev/null 2>&1; echo $?; }
+tp T002 T003 | grep -q 'общие файлы: api/v1/__init__.py, openapi.json' || fail "task_pairs: общий файл не замечен" "$(tp T002 T003)"
+printf 'shared api/v1/__init__.py\nshared openapi.json\n' > "$TP/.claude/pair-rules.txt"
+[ "$(tpc T002 T003)" = 0 ] || fail "task_pairs: регистрация и генерируемое из shared не допущены" "$(tp T002 T003)"
+tp T002 T003 | grep -q 'общее допустимое' || fail "task_pairs: допустимое общее не названо" "$(tp T002 T003)"
+tp T001 T002 | grep -q 'связаны в графе' || fail "task_pairs: стрелка графа не учтена" "$(tp T001 T002)"
+tp T001 T006 | grep -q 'связаны в графе' || fail "task_pairs: связь через цепочку не учтена" "$(tp T001 T006)"
+tp T004 T005 | grep -q 'каталог mcp' || fail "task_pairs: диапазон уровня или общая мера не учтены" "$(tp T004 T005)"
+tp T004 T005 | grep -q 'связаны в графе' && fail "task_pairs: задачи одного диапазона приняты за связанные" "$(tp T004 T005)"
+tp T007 T002 | grep -q 'связаны в графе' || fail "task_pairs: «зависит от» не учтено" "$(tp T007 T002)"
+tp T001 T008 | grep -q 'миграция' && fail "task_pairs: миграция одной задачи сочтена общей" "$(tp T001 T008)"
+printf 'serial db/migrations/\n' >> "$TP/.claude/pair-rules.txt"
+[ "$(tpc T008 T006)" = 1 ] || fail "task_pairs: общий файл сущности не замечен" "$(tp T008 T006)"
+printf -- '- [ ] T012 ещё миграция\n  Файлы: `db/migrations/0003.py`\n' >> "$TP/tasks.md"
+tp T001 T012 | grep -q 'миграция' || fail "task_pairs: две миграции приняты за пару" "$(tp T001 T012)"
+tp T009 T010 | grep -q 'сущность: notification' || fail "task_pairs: общая сущность не учтена" "$(tp T009 T010)"
+tp T003 T011 | grep -q 'не объявлены файлы' || fail "task_pairs: задача без файлов принята" "$(tp T003 T011)"
+[ "$(tpc T003 T099)" = 2 ] || fail "task_pairs: неизвестная задача не отвергнута" ""
+# Заметка «для T003 и T006» — не зависимость.
+tp T002 T008 | grep -q 'связаны' && fail "task_pairs: упоминание в заметке принято за зависимость" "$(tp T002 T008)"
+# Пробное слияние двух веток без дерева.
+git -C "$TP" add -A; git -C "$TP" -c user.name=t -c user.email=t@t commit -qm base
+for b in a b; do git -C "$TP" switch -q -c "t$b" main; printf '%s\n' "$b" > "$TP/shared.py"; printf '%s\n' "$b" > "$TP/own_$b.py"
+  git -C "$TP" add -A; git -C "$TP" -c user.name=t -c user.email=t@t commit -qm "$b"; done
+git -C "$TP" switch -q main
+OUT=$(python3 "$SCRIPTS/task_pairs.py" merge ta tb --root "$TP" 2>&1); CODE=$?
+[ $CODE = 1 ] && printf '%s' "$OUT" | grep -q 'конфликт в shared.py' || fail "task_pairs merge: конфликт не найден" "$CODE $OUT"
+git -C "$TP" switch -q -c tc main; printf 'c\n' > "$TP/own_c.py"; git -C "$TP" add -A; git -C "$TP" -c user.name=t -c user.email=t@t commit -qm c; git -C "$TP" switch -q main
+python3 "$SCRIPTS/task_pairs.py" merge ta tc --root "$TP" >/dev/null 2>&1 || fail "task_pairs merge: чистое слияние сочтено конфликтом" ""
+rm -rf "$TP"
 
 # --- version_check: загружена та версия, что выпущена -----------------------
 VC=$(mktemp -d); mkdir -p "$VC/home" "$VC/cache/p/1.0.0/.claude-plugin" "$VC/mp/.claude-plugin" "$VC/mp/plugins/p/.claude-plugin"

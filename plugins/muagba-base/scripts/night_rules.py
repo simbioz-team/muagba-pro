@@ -56,5 +56,7 @@ if __name__ == "__main__":
         print("  • команда " + c)
     for d in appr.get("dangerous") or []:
         print("  ⚠ ОПАСНОЕ, утверждено явно: " + d)
+    for i in appr.get("instead") or []:
+        print("  ↪ если не выйдет: " + i)
     for t in appr.get("tasks") or []:
         print("  ▸ задача: " + t)

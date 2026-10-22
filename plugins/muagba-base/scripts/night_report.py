@@ -7,10 +7,18 @@
   ночном режиме);
 - `.claude/logs/agents.jsonl` — события night_deferred, gate, запуски
   агентов;
-- стенограммы сессий проекта (~/.claude/projects/<проект>/), основные
-  и сабагентов, — отказы контролёра (режим auto): результат инструмента с
-  «denied by the Claude Code auto mode classifier». Одобрения контролёра в
-  стенограмме не видны.
+- стенограммы сессий проекта (~/.claude/projects/<проект>/ и его рабочих
+  деревьев), основные и сабагентов, — отказы контролёра (режим auto):
+  результат инструмента с «denied by the Claude Code auto mode
+  classifier». Одобрения контролёра в стенограмме не видны;
+- коммиты ночи во всех ветках — добавленные строки с «Спросить: да»:
+  решения, принятые агентом по умолчанию. Координатор пишет их в журнал и
+  в спеку, а не в morning.md; у narta утром 22.10 отчёт показал «ничего»,
+  хотя за ночь таких решений было больше десятка, а morning.md координатор
+  уже перенёс в журнал и очистил.
+
+Логи — из основного checkout'а (туда пишут хуки), даже если отчёт
+запущен из рабочего дерева.
 
 Запуск: python3 night_report.py [--cwd КАТАЛОГ] [--since ISO] [--hours 16]
 """
@@ -21,6 +29,7 @@ import datetime as dt
 import glob
 import json
 import re
+import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -45,6 +54,10 @@ def main() -> int:
     ap.add_argument("--transcripts")
     o = ap.parse_args()
     root = Path(o.cwd).resolve()
+    r = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip().endswith("/.git"):
+        root = Path(r.stdout.strip()).parent
     since = ts(o.since) or (dt.datetime.now().astimezone() - dt.timedelta(hours=o.hours))
     L = [f"# Утро после ночи — с {since:%Y-%m-%d %H:%M}", ""]
 
@@ -52,6 +65,27 @@ def main() -> int:
     text = morning.read_text(encoding="utf-8") if morning.exists() else ""
     L += ["## Отложено человеку", ""]
     L += [text.rstrip() or "Ничего: ни одного вопроса и ни одного действия, ждавшего человека.", ""]
+
+    asked = []
+    r = subprocess.run(["git", "-C", str(root), "log", "--all", f"--since={since.isoformat()}",
+                        "-p", "-U0", "--format=@@commit %h"], capture_output=True, text=True, errors="replace")
+    commit = ""
+    for line in r.stdout.splitlines() if r.returncode == 0 else []:
+        if line.startswith("@@commit "):
+            commit = line.split()[1]
+        elif line.startswith("+") and not line.startswith("+++") and "Спросить: да" in line:
+            item = line[1:].strip().lstrip("-* ").strip()
+            # Строки таблиц — реестры документов (INDEX/TAGS), а не решения.
+            if item.startswith("|"):
+                continue
+            if item and item not in (a for _, a in asked):
+                asked.append((commit, item))
+    L += ["## Решено по умолчанию (Спросить: да)", ""]
+    L += [f"- {a[:300]}{'…' if len(a) > 300 else ''} ({c})" for c, a in asked[:60]] or \
+         ["Нет: ни одной строки «Спросить: да» в коммитах ночи."]
+    if len(asked) > 60:
+        L += [f"- … ещё {len(asked) - 60}: git log --all -p --since=… | grep «Спросить: да»"]
+    L += [""]
 
     ev = []
     log = root / ".claude" / "logs" / "agents.jsonl"
@@ -72,8 +106,11 @@ def main() -> int:
     tdir = Path(o.transcripts) if o.transcripts else Path.home() / ".claude" / "projects" / slug
     denials: Counter = Counter()
     merges = 0
-    for f in glob.glob(str(tdir / "*.jsonl")) + glob.glob(str(tdir / "*" / "subagents" / "**" / "*.jsonl"),
-                                                           recursive=True):
+    tdirs = [tdir] if o.transcripts else [tdir] + [Path(d) for d in glob.glob(str(tdir) + "--claude-worktrees-*")]
+    files = []
+    for d in tdirs:
+        files += glob.glob(str(d / "*.jsonl")) + glob.glob(str(d / "*" / "subagents" / "**" / "*.jsonl"), recursive=True)
+    for f in files:
         try:
             lines = open(f, encoding="utf-8", errors="replace")
         except OSError:

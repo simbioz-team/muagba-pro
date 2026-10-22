@@ -2,12 +2,14 @@
 name: day
 description: Утро — выключить ночной режим и разобрать ночь. Убирает ночные правила из настроек человека, снимает пометку ночи и показывает утренний отчёт.
 disable-model-invocation: true
-allowed-tools: Bash(./.claude/night-switch *)
+allowed-tools: Bash(./.claude/night-switch *), Bash(${CLAUDE_PROJECT_DIR}/.claude/night-switch *)
 ---
 
 # Утро: выключить ночь
 
-1. **Выключи ночь сам** — из корня проекта:
+1. **Выключи ночь сам** — из корня проекта, именно так — относительным путём (разрешение
+   проекта написано на `./.claude/night-switch`, абсолютный путь с ним не
+   совпадёт, и ночью контролёр откажет):
 
    ```bash
    ./.claude/night-switch off
