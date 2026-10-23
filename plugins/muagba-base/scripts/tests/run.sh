@@ -1541,6 +1541,85 @@ printf '{"tool_input":{"command":"rm -rf wt"},"cwd":"%s"}' "$WD" \
 [ $? -eq 2 ] || fail "guard-bash: rm -rf по дереву не запрещён" ""
 rm -rf "$WD"
 
+# --- check-codes: коды ответа сверяются с реестром (ADR-0019) ---------------
+CC=$(mktemp -d); git init -q -b main "$CC"; mkdir -p "$CC/.claude" "$CC/api"
+cp "$TEMPLATE/.claude/check-codes.py" "$CC/.claude/"
+cc() { (cd "$CC" && python3 .claude/check-codes.py "$@" 2>&1) || true; }
+ccc() { (cd "$CC" && python3 .claude/check-codes.py "$@" >/dev/null 2>&1); echo $?; }
+ccj() { python3 - "$CC/api/codes.json" "$1" <<'PY'
+import json, sys
+p, code = sys.argv[1], sys.argv[2]
+d = json.load(open(p)); c = d["codes"]
+exec(code)
+json.dump(d, open(p, "w"))
+PY
+}
+cgit() { git -C "$CC" add -A && git -C "$CC" -c user.email=t@t -c user.name=t commit -qm "$1"; }
+[ "$(ccc)" = 0 ] || fail "check-codes: без конфига не no-op" "$(cc)"
+echo '{"none": "только CLI"}' > "$CC/.claude/response-codes.json"
+[ "$(ccc)" = 0 ] || fail "check-codes: none не принят" "$(cc)"
+cat > "$CC/.claude/response-codes.json" <<'JSON'
+{"registries": ["api/codes.json"],
+ "usage": [{"files": ["api/**/*.py"], "pattern": "\"(/problems/[a-z0-9/-]+)\"", "exclude": ["api/gen.py"]},
+           {"files": ["api/**/*.py"], "pattern": "Problem\\.([A-Z_]+)"}]}
+JSON
+printf 'r("/problems/not-found")\nr("/problems/old-thing")\n' > "$CC/api/views.py"
+printf 'ALL = ["/problems/ghost"]\n' > "$CC/api/gen.py"
+cgit init
+cc adopt api/codes.json | grep -q 'unreviewed: 2' || fail "check-codes: adopt не внёс найденное" "$(cc adopt api/codes.json)"
+[ "$(ccc)" = 0 ] || fail "check-codes: реестр, заведённый в ветке, с unreviewed — не зелёный" "$(cc)"
+cgit adopt
+cc --stats | grep -q '"hits": 2' || fail "check-codes: --stats не считает употребления" "$(cc --stats)"
+echo 'r("/problems/brand-new")' >> "$CC/api/views.py"
+cc | grep -q 'brand-new не записан' || fail "check-codes: код вне реестра не пойман" "$(cc)"
+ccj 'c.append({"id": "/problems/brand-new", "state": "unreviewed"})'
+cc | grep -q 'новый и unreviewed' || fail "check-codes: храповик unreviewed не держит новое" "$(cc)"
+ccj 'c[-1].update({"state": "active"})'
+cc | grep -q 'не заполнено class, meaning, client_action, added_by' || fail "check-codes: неполная запись не поймана" "$(cc)"
+ccj 'c[-1].update({"class": "409", "meaning": "m", "client_action": "a", "added_by": "T1", "name": "BRAND_NEW"})'
+[ "$(ccc)" = 0 ] || fail "check-codes: правильная новая запись не принята" "$(cc)"
+echo 'r(Problem.BRAND_NEW)' >> "$CC/api/views.py"
+[ "$(ccc)" = 0 ] || fail "check-codes: ссылка на элемент перечисления по name не узнана" "$(cc)"
+cgit add
+ccj 'd["codes"] = [e for e in c if e["id"] != "/problems/old-thing"]'
+cc | grep -q 'old-thing удалён без выведения' || fail "check-codes: удаление без выведения не поймано" "$(cc)"
+git -C "$CC" checkout -q -- api/codes.json
+ccj '[e.update({"class": "410"}) for e in c if e["id"] == "/problems/brand-new"]'
+cc | grep -q 'сменил класс 409 → 410' || fail "check-codes: смена класса не поймана" "$(cc)"
+git -C "$CC" checkout -q -- api/codes.json
+ccj 'c.append({"id": "/problems/brand-new", "class": "409", "meaning": "m", "client_action": "a", "state": "active", "added_by": "T2"})'
+cc | grep -q 'id уже есть' || fail "check-codes: дубль id не пойман" "$(cc)"
+git -C "$CC" checkout -q -- api/codes.json
+ccj 'c.append({"id": "/problems/idle", "class": "400", "meaning": "m", "client_action": "a", "state": "active", "added_by": "T3"})'
+cc | grep -q 'idle active, но нигде не употребляется' || fail "check-codes: мёртвая active-запись не поймана" "$(cc)"
+git -C "$CC" checkout -q -- api/codes.json
+ccj '[e.update({"class": "404", "meaning": "m", "client_action": "a", "added_by": "T0", "state": "deprecated", "replaced_by": "/problems/brand-new", "remove_after": "2000-01-01"}) for e in c if e["id"] == "/problems/old-thing"]'
+cc | grep -q 'old-thing выведен до 2000-01-01, а ещё употребляется' || fail "check-codes: истёкший вывод в употреблении не пойман" "$(cc)"
+cgit deprecate
+sed -i '/old-thing/d' "$CC/api/views.py"
+ccj 'd["codes"] = [e for e in c if e["id"] != "/problems/old-thing"]'
+[ "$(ccc)" = 0 ] || fail "check-codes: удаление выведенной после срока не принято" "$(cc)"
+cc | grep -q 'ghost' && fail "check-codes: exclude не исключил генерируемое" "$(cc)"
+echo '{"registries": ["api/codes.json"], "usage": [{"files": ["*"], "pattern": "("}]}' > "$CC/.claude/response-codes.json"
+[ "$(ccc)" = 2 ] || fail "check-codes: битый шаблон не дал 2" "$(cc)"
+rm -rf "$CC"
+
+# --- проба check.codes ------------------------------------------------------
+PC=$(mktemp -d); git init -q -b main "$PC"; mkdir -p "$PC/.claude" "$PC/api"
+[ "$(verdict "$PC" check.codes)" != ok ] || fail "check.codes: без решения не красная" "$(detail "$PC" check.codes)"
+echo '{"none": "только CLI"}' > "$PC/.claude/response-codes.json"
+[ "$(verdict "$PC" check.codes)" = ok ] || fail "check.codes: none не принят" "$(detail "$PC" check.codes)"
+echo '{"registries": ["api/codes.json"], "usage": [{"files": ["api/*.py"], "pattern": "\"(/problems/[a-z-]+)\""}]}' > "$PC/.claude/response-codes.json"
+echo '{"codes": []}' > "$PC/api/codes.json"
+cp "$TEMPLATE/.claude/check-codes.py" "$PC/.claude/"
+printf '#!/usr/bin/env bash\n# python3 .claude/check-codes.py\n' > "$PC/.claude/check.sh"
+detail "$PC" check.codes | grep -q 'не вызывает' || fail "check.codes: вызов в комментарии засчитан" "$(detail "$PC" check.codes)"
+echo 'python3 .claude/check-codes.py || exit 1' >> "$PC/.claude/check.sh"
+detail "$PC" check.codes | grep -q 'не находит ни одного' || fail "check.codes: слепой шаблон не пойман" "$(detail "$PC" check.codes)"
+echo 'r("/problems/not-found")' > "$PC/api/views.py"
+[ "$(verdict "$PC" check.codes)" = ok ] || fail "check.codes: настроенный проект не зелёный" "$(detail "$PC" check.codes)"
+rm -rf "$PC"
+
 # --- task_pairs: пара задач по графу, файлам, миграциям, мерам -------------
 TP=$(mktemp -d); git init -q -b main "$TP"; mkdir -p "$TP/.claude"
 cat > "$TP/tasks.md" <<'MD'

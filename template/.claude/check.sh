@@ -74,6 +74,10 @@ run_target() {  # <имя>
 # и незаполненный слот начнёт ронять проверку.
 python3 .claude/check-frames.py --soft
 
+# Коды ответа сетевых взаимодействий — по реестру (ADR-0019, вопрос В6.10).
+# Без .claude/response-codes.json ничего не делает.
+[ -f .claude/check-codes.py ] && { python3 .claude/check-codes.py || exit 1; }
+
 if [ -n "${MUAGBA_GATE_EVENT:-}" ]; then
   # С последнего зелёного правились только документы и спеки (журнал,
   # отметки задач) — короткий набор, если проект его завёл: цель

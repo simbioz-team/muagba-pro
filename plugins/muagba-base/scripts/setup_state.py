@@ -1039,6 +1039,48 @@ def pr_check_split(c: Ctx) -> V:
                "CI на pull_request с вызовом check.sh — или не делить гейт (ADR-0015)")
 
 
+def pr_check_codes(c: Ctx) -> V:
+    """Коды ответа сверяются с реестром (ADR-0019).
+
+    Свойство — проверка видит коды в коде: объявлена, вызывается из
+    check.sh и каждый шаблон употребления что-то находит. Шаблон, не
+    находящий ничего, — зелёная проверка, которая смотрит мимо.
+    """
+    cfg = c.json(".claude/response-codes.json")
+    if cfg is None and c.exists(".claude/response-codes.json"):
+        return bad(".claude/response-codes.json — не JSON")
+    if cfg is None:
+        return bad("коды ответа не решены: нет .claude/response-codes.json",
+                   "реестры и шаблоны употребления — или {\"none\": \"почему\"} (В6.10)")
+    if not isinstance(cfg, dict):
+        return bad(".claude/response-codes.json — не объект")
+    if cfg.get("none") and not cfg.get("registries"):
+        return ok(f"своих сетевых ответов нет: {cfg['none']}")
+    if not cfg.get("registries") or not cfg.get("usage"):
+        return bad("в .claude/response-codes.json нет registries или usage",
+                   "реестр и хотя бы один шаблон употребления")
+    if not c.exists(".claude/check-codes.py"):
+        return bad("нет .claude/check-codes.py", "файл базы — придёт с обновлением плагина")
+    text = c.read(".claude/check.sh") or ""
+    code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    if "check-codes.py" not in code:
+        return bad("check.sh не вызывает check-codes.py",
+                   "python3 .claude/check-codes.py || exit 1 — после check-frames")
+    try:
+        r = subprocess.run([sys.executable, str(c.p(".claude/check-codes.py")), "--stats"],
+                           cwd=c.root, capture_output=True, text=True, timeout=60)
+        stats = json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        stats = None
+    if stats is None:
+        return bad("check-codes.py --stats не отработал", "прогнать python3 .claude/check-codes.py")
+    blind = [s["pattern"] for s in stats if not s.get("hits")]
+    if blind:
+        return bad("шаблон не находит ни одного употребления: " + ", ".join(blind),
+                   "поправить files или pattern в .claude/response-codes.json")
+    return ok(f"шаблонов {len(stats)}, употреблений {sum(s['hits'] for s in stats)}")
+
+
 # Хостинг, который умеет запускать рабочие процессы. Локальный bare-репозиторий
 # их не запускает, и требовать от него зелёный прогон — повторить ошибку,
 # которую только что чинили у защиты ветки: гейт, недостижимый для целого
@@ -1780,6 +1822,8 @@ PROBES = [
           fills=("workflow CI", None), run=pr_check_ci),
     Probe("check.split", "Э6", "быстрый гейт подкреплён полной проверкой",
           fills=(".claude/check.sh", "развилка MUAGBA_GATE_EVENT"), run=pr_check_split),
+    Probe("check.codes", "Э6", "коды ответа сверяются с реестром",
+          fills=(".claude/response-codes.json", None), run=pr_check_codes),
     Probe("check.ladder", "Э6", "жёсткость гейта выбрана",
           fills=("docs/workflow.md", "Жёсткость гейта"), run=pr_check_ladder),
     Probe("check.ci-ran", "Э6", "беспристрастный прогон хоть раз состоялся",
