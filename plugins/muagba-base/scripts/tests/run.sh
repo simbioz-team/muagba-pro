@@ -739,6 +739,21 @@ printf '{"cwd":"%s"}\n' "$GS" "$GS/wt" > "$GS/.git/s.jsonl"
   || fail "gate-check: дерево сессии взято не из последнего cwd стенограммы" ""
 rm -rf "$GS"
 
+# --- gate_key: отпечаток есть, когда .claude/logs в .gitignore --------------
+# Каркас держит .claude/logs/ в .gitignore. git 2.53 на `:(exclude)` такого
+# пути отвечал кодом 1, отпечаток пропадал, и гейт narta на 0.22.0 гонял
+# проверку на каждом ходе. Тест выше этого не видел: в его проекте
+# .gitignore нет.
+GI=$(mktemp -d); git -C "$GI" init -q; mkdir -p "$GI/.claude/logs"
+printf '.claude/logs/\n' > "$GI/.gitignore"; echo x > "$GI/.claude/logs/a"; echo y > "$GI/f"
+git -C "$GI" add -A; git -C "$GI" -c user.name=t -c user.email=t@t commit -qm init
+K1=$(python3 "$SCRIPTS/gate_key.py" key "$GI")
+[ -n "$K1" ] || fail "gate_key: нет отпечатка при .claude/logs в .gitignore" ""
+echo z >> "$GI/.claude/logs/a"
+[ "$(python3 "$SCRIPTS/gate_key.py" key "$GI")" = "$K1" ] || fail "gate_key: журнал меняет отпечаток" ""
+[ "$(python3 "$SCRIPTS/gate_key.py" head "$GI")" = "$K1" ] || fail "gate_key: head не совпал с key на чистом дереве" ""
+rm -rf "$GI"
+
 # --- gate-check: уже проверенное зелёным не проверяется заново -------------
 # У narta за этап 1.4 гейт гонял check.sh 131 раз (651 мин), 130 зелёных, и в
 # сотне ходов код перед этим не менялся. Счётчик прогонов — вне дерева.

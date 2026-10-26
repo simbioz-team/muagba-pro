@@ -69,7 +69,13 @@ def key(cwd: str) -> str:
         if os.path.exists(index.decode().strip()):
             shutil.copy2(index.decode().strip(), tmp_index)
         env = {**os.environ, "GIT_INDEX_FILE": tmp_index}
-        if git(top_s, "add", "-A", "--", ".", f":(exclude){SKIP}", env=env) is None:
+        # SKIP снимается следующей командой, а не исключением в pathspec:
+        # git 2.53 на `:(exclude)` пути из .gitignore отвечает кодом 1
+        # («пути игнорируются… Use -f»), и отпечаток пропадал у каждого
+        # проекта с .claude/logs в .gitignore — то есть у всех по каркасу.
+        # У narta 0.22.0 гейт перестал узнавать проверенное: 32 cached за
+        # день стали настоящими прогонами по ~500 с.
+        if git(top_s, "add", "-A", "--", ".", env=env) is None:
             return ""
         if git(top_s, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", SKIP, env=env) is None:
             return ""
