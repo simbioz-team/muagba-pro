@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Ограничения агентов в этом проекте (базы muagba-pro): off | on | status.
+#   ! ./.claude/guards off     — снять: хуки-ограничители базы молчат,
+#                                правила deny проекта убраны
+#   ! ./.claude/guards on      — вернуть ровно снятое
+#   ! ./.claude/guards status
+#
+# Запускает человек — через '!' в сессии или в терминале. Агенту `off`
+# запрещает guard-bash, а в разрешения проекта эта команда не вносится.
+# Срока нет: снято, пока не вернёте; каждая сессия напоминает об этом.
+# Пока ограничения сняты, .claude/settings.json изменён — не коммитьте его.
+#
+# Обёртка над guards_switch.py установленного плагина: путь плагина
+# меняется с каждой версией, а этот — постоянный.
+set -uo pipefail
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# Плагин ищется по списку установленных, как в claude-night: сначала
+# установка этого проекта, затем пользовательская.
+PLUGIN_SCRIPTS=$(python3 - "$ROOT" <<'PY'
+import json, os, subprocess, sys
+root = sys.argv[1]
+r = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                   capture_output=True, text=True)
+main = os.path.dirname(r.stdout.strip()) if r.returncode == 0 else root
+try:
+    d = json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))
+except (OSError, ValueError):
+    sys.exit(0)
+es = d.get("plugins", {}).get("muagba-base@muagba-pro", [])
+es = sorted(es, key=lambda e: (e.get("projectPath") not in (root, main), e.get("scope") != "user"))
+for e in es:
+    p = os.path.join(e.get("installPath", ""), "scripts")
+    if os.path.isfile(os.path.join(p, "guards_switch.py")):
+        print(p)
+        break
+PY
+)
+[ -n "$PLUGIN_SCRIPTS" ] || { echo "guards: не найден установленный плагин muagba-base (≥ 0.22.3)." >&2; exit 1; }
+exec python3 "$PLUGIN_SCRIPTS/guards_switch.py" "$@" --cwd "$PWD"

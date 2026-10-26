@@ -4,7 +4,8 @@
     {"path": ".claude/check-frames.py"},
     {"path": ".claude/check-codes.py", "create": true},
     {"path": ".claude/claude-night", "exec": true, "create": true, "requires": ".claude/night/settings.json"},
-    {"path": ".claude/night-switch", "exec": true, "create": true, "requires": ".claude/night/settings.json"}
+    {"path": ".claude/night-switch", "exec": true, "create": true, "requires": ".claude/night/settings.json"},
+    {"path": ".claude/guards", "exec": true, "create": true}
   ],
   "blocks": [
     {"path": "AGENTS.md", "id": "base-rules"}

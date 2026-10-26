@@ -44,6 +44,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from guards_switch import is_off as guards_is_off  # noqa: E402
+
 PLUGIN = Path(__file__).resolve().parent.parent
 SYNC = PLUGIN / "sync"
 STATE = ".claude/muagba-sync.json"
@@ -202,7 +205,7 @@ def guard(root: Path) -> list[str]:
     текущую версию записала база: законный отпечаток (written) совпадает с
     копией в плагине. Конфликтное, закреплённое за проектом (held) и
     незаписанное — не его."""
-    if is_base_repo(root) or window(root):
+    if is_base_repo(root) or window(root) or guards_is_off(root):
         return []
     st = load(root / STATE)
     written, held = st.get("written") or {}, st.get("held") or {}

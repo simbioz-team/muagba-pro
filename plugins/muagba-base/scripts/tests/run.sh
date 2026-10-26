@@ -1986,6 +1986,65 @@ rm -rf "$JW"
 OUT=$(PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SCRIPTS/../../../template/.claude/hooks" -q 2>&1) \
   || fail "branch_policy: тесты образца красные" "$OUT"
 
+# --- guards_switch: человек снимает и возвращает ограничения агентов -------
+# Снятое обязано вернуться ровно на место, во всех рабочих деревьях; агенту
+# снять нельзя; пока снято — хуки молчат и каждая сессия об этом говорит.
+GW=$(mktemp -d); mkdir -p "$GW/p/.claude"
+printf '{"permissions": {"allow": ["Bash(ls *)"], "deny": ["Read(.env)", "Bash(x *)"]}}\n' > "$GW/p/.claude/settings.json"
+printf 'secret.txt\n' > "$GW/p/.claude/protected-paths.txt"
+printf '#!/usr/bin/env bash\ntouch "$(dirname "$0")/ran"; exit 1\n' > "$GW/p/.claude/check.sh"; chmod +x "$GW/p/.claude/check.sh"
+( cd "$GW/p" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm x \
+  && git worktree add -q ../w -b gw 2>/dev/null )
+gw_bash() { printf '{"tool_input":{"command":%s},"cwd":"%s"}' "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$GW/p" \
+  | bash "$SCRIPTS/guard-bash.sh" >/dev/null 2>&1; echo $?; }
+gw_write() { printf '{"tool_input":{"file_path":"%s/p/secret.txt"},"cwd":"%s/p"}' "$GW" "$GW" \
+  | bash "$SCRIPTS/protect-paths.sh" >/dev/null 2>&1; echo $?; }
+gw_gate() { rm -f "$GW/p/.claude/ran"
+  printf '{"hook_event_name":"Stop","cwd":"%s/p"}' "$GW" | MUAGBA_GATE_ALWAYS=1 bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1
+  [ -f "$GW/p/.claude/ran" ] && echo ran || echo skipped; }
+gw_notice() { printf '{"cwd":"%s/w"}' "$GW" | python3 "$SCRIPTS/guards_switch.py" notice; }
+gw_deny() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["permissions"]["deny"])' "$1"; }
+gw_mark() { [ -f "$GW/p/.git/muagba-guards-off" ] && echo yes || echo no; }
+
+for c in "./.claude/guards off" "bash .claude/guards off" "python3 ~/.claude/plugins/x/scripts/guards_switch.py off" \
+         "touch .git/muagba-guards-off"; do
+  [ "$(gw_bash "$c")" = 2 ] || fail "guards: агент снял ограничения" "$c"
+done
+for c in "./.claude/guards status" "./.claude/guards on"; do
+  [ "$(gw_bash "$c")" = 0 ] || fail "guards: агенту запрещено безвредное" "$c"
+done
+[ "$(gw_write)" = 2 ] && [ "$(gw_bash "git push --force origin x")" = 2 ] && [ "$(gw_gate)" = ran ] \
+  && [ -z "$(gw_notice)" ] || fail "guards: до выключения ограничения не действуют" ""
+
+python3 "$SCRIPTS/guards_switch.py" off --cwd "$GW/p" >/dev/null
+[ "$(gw_mark)" = yes ] || fail "guards: off не поставил пометку" ""
+[ "$(gw_deny "$GW/p/.claude/settings.json")" = "[]" ] && [ "$(gw_deny "$GW/w/.claude/settings.json")" = "[]" ] \
+  || fail "guards: deny не убран во всех деревьях" "$(gw_deny "$GW/p/.claude/settings.json") $(gw_deny "$GW/w/.claude/settings.json")"
+[ "$(gw_write)" = 0 ] || fail "guards: защита путей не замолчала" ""
+[ "$(gw_bash "git push --force origin x")" = 0 ] || fail "guards: guard-bash не замолчал" ""
+[ "$(gw_gate)" = skipped ] || fail "guards: гейт гонял проверку при снятых ограничениях" ""
+printf '{"cwd":"%s/p"}' "$GW" | python3 "$SCRIPTS/frame_lock.py" guard >/dev/null || fail "guards: сторож файлов базы упал" ""
+gw_notice | grep -q 'сняты' || fail "guards: сессия в рабочем дереве не предупреждена" "$(gw_notice)"
+python3 "$SCRIPTS/guards_switch.py" off --cwd "$GW/w" | grep -q 'уже сняты' \
+  || fail "guards: повторный off не узнал пометку из рабочего дерева" ""
+
+# Добавленное, пока ограничения сняты, остаётся после возвращённого.
+printf '{"permissions": {"deny": ["Bash(y *)"]}}\n' > "$GW/p/.claude/settings.json"
+python3 "$SCRIPTS/guards_switch.py" on --cwd "$GW/w" >/dev/null
+[ "$(gw_mark)" = no ] || fail "guards: on не снял пометку" ""
+[ "$(gw_deny "$GW/p/.claude/settings.json")" = "['Read(.env)', 'Bash(x *)', 'Bash(y *)']" ] \
+  || fail "guards: deny возвращён не на место" "$(gw_deny "$GW/p/.claude/settings.json")"
+[ "$(gw_deny "$GW/w/.claude/settings.json")" = "['Read(.env)', 'Bash(x *)']" ] \
+  || fail "guards: deny рабочего дерева не возвращён" "$(gw_deny "$GW/w/.claude/settings.json")"
+[ "$(gw_write)" = 2 ] && [ "$(gw_gate)" = ran ] && [ -z "$(gw_notice)" ] \
+  || fail "guards: после on ограничения не вернулись" ""
+# Вне git и без настроек — не падает.
+NG=$(mktemp -d)
+python3 "$SCRIPTS/guards_switch.py" off --cwd "$NG" >/dev/null && [ -f "$NG/.claude/muagba-guards-off" ] \
+  && python3 "$SCRIPTS/guards_switch.py" on --cwd "$NG" >/dev/null && [ ! -f "$NG/.claude/muagba-guards-off" ] \
+  || fail "guards: вне git не работает" ""
+rm -rf "$GW" "$NG"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"

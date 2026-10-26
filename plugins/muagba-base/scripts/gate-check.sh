@@ -95,6 +95,8 @@ fi
 # агент работает в своём дереве, и проверять надо именно его.
 WORK=$(work_dir)
 CHECK="$WORK/.claude/check.sh"
+# Ограничения сняты человеком (guards_switch.py off) — гейта нет.
+if guards_off "$WORK"; then log_event gate decision=guards_off; exit 0; fi
 [ -x "$CHECK" ] || exit 0
 
 KEYPY="$(dirname "${BASH_SOURCE[0]}")/gate_key.py"

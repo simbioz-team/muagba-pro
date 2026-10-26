@@ -13,6 +13,8 @@ FILE_PATH="${FILE_PATH//\\//}"   # нормализуем разделители
 # вышло — у рабочей директории. Порядок именно такой: правила на файл
 # накладывает его проект, а не тот, из которого запущена сессия.
 WORK=$(owner_dir "$FILE_PATH") || WORK=$(work_dir)
+# Ограничения сняты человеком (guards_switch.py off) — защита путей молчит.
+guards_off "$WORK" && exit 0
 LIST="$WORK/.claude/protected-paths.txt"
 
 if [ -f "$LIST" ]; then

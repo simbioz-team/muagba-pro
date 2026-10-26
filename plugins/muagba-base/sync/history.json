@@ -15,6 +15,9 @@
   ".claude/night-switch": [
     "6508f3ccd1f1b1eeb57bbe15b306246fe85eb4dca7167df7016296839ed4e061"
   ],
+  ".claude/guards": [
+    "d0a953d354a9af5b3b922223b5741825d7affc04f88b635458116cebbd4c64e8"
+  ],
   "block:base-rules": [
     "6c5c34ba68fca90deeb7dff1f2971a9754e129a90230364fecc5ab1bd99213a1",
     "82ca9a20a61c59b701b93f742476e856e159e6232f3d21afc4cf90772779860c",

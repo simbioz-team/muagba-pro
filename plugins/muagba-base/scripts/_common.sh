@@ -25,6 +25,14 @@ if cur is not None:
 ' "$1" 2>/dev/null
 }
 
+# guards_off <каталог> — сняты ли ограничения агентов в его репозитории
+# (guards_switch.py off). Пометка одна на репозиторий, в общем каталоге git.
+guards_off() {
+  local c
+  c=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  if [ -n "$c" ]; then [ -f "$c/muagba-guards-off" ]; else [ -f "$1/.claude/muagba-guards-off" ]; fi
+}
+
 # Корень проекта, где стартовала сессия.
 project_dir() {
   printf '%s' "${CLAUDE_PROJECT_DIR:-$PWD}"
