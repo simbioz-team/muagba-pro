@@ -754,6 +754,49 @@ echo z >> "$GI/.claude/logs/a"
 [ "$(python3 "$SCRIPTS/gate_key.py" head "$GI")" = "$K1" ] || fail "gate_key: head не совпал с key на чистом дереве" ""
 rm -rf "$GI"
 
+# --- gate-check: MUAGBA_GATE_STOP=commit — ход проверяется по сдвигу HEAD --
+# У narta 26.10 человек правил код по шагам, и каждый ход координатора гонял
+# быструю часть по ~500 с. В режиме commit правка без коммита — середина
+# работы; проверяется сдвинувшийся HEAD, красный — до зелёного.
+GM=$(mktemp -d); GMO=$(mktemp -d); mkdir -p "$GM/.claude/logs"; git -C "$GM" init -q
+printf '.claude/logs/\n' > "$GM/.gitignore"
+cat > "$GM/.claude/check.sh" <<SH
+#!/usr/bin/env bash
+echo run >> "$GMO/count"
+[ -f bad.txt ] && exit 1
+exit 0
+SH
+chmod +x "$GM/.claude/check.sh"; echo a > "$GM/f.txt"
+gmc() { git -C "$GM" add -A; git -C "$GM" -c user.name=t -c user.email=t@t commit -qm "$1"; }
+gmc init
+gm() {  # <событие> → код гейта в режиме commit
+  printf '{"hook_event_name":"%s","agent_type":"muagba-base:implementer","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' "$1" "$GM" \
+    | env CLAUDE_PROJECT_DIR="$GM" MUAGBA_GATE_STOP=commit bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+gmr() { wc -l < "$GMO/count" | tr -d ' '; }
+gm Stop >/dev/null; [ "$(gmr)" = 1 ] || fail "gate commit: первый ход не проверен" "$(gmr)"
+echo b > "$GM/f.txt"
+gm Stop >/dev/null; [ "$(gmr)" = 1 ] || fail "gate commit: правка без коммита проверена" "$(gmr)"
+grep -q '"decision": "skipped_midtask"' "$GM/.claude/logs/agents.jsonl" \
+  || fail "gate commit: пропуск середины работы не записан" "$(tail -2 "$GM/.claude/logs/agents.jsonl")"
+K=$(python3 "$SCRIPTS/gate_key.py" key "$GM")
+grep -q "^$K " "$(git -C "$GM" rev-parse --git-common-dir)/muagba-gate-green" \
+  && fail "gate commit: непроверенное дерево попало в зелёные" ""
+gmc step
+gm Stop >/dev/null; [ "$(gmr)" = 2 ] || fail "gate commit: коммит не проверен" "$(gmr)"
+gm Stop >/dev/null; [ "$(gmr)" = 2 ] || fail "gate commit: тот же HEAD проверен снова" "$(gmr)"
+touch "$GM/bad.txt"; gmc red
+[ "$(gm Stop)" = 2 ] || fail "gate commit: красный HEAD не удержан" ""
+[ "$(gm Stop)" = 2 ] || fail "gate commit: красный HEAD не перепроверяется до зелёного" ""
+[ "$(gmr)" = 4 ] || fail "gate commit: красный гонялся не каждый ход" "$(gmr)"
+rm "$GM/bad.txt"
+# Починка вернула уже зелёное дерево — пропуск по отпечатку, без прогона.
+[ "$(gm Stop)" = 0 ] || fail "gate commit: починка без коммита после красного не отпущена" ""
+[ "$(gmr)" = 4 ] || fail "gate commit: зелёное дерево после красного проверено заново" "$(gmr)"
+echo c > "$GM/f.txt"
+[ "$(gm SubagentStop)" = 0 ] && [ "$(gmr)" = 5 ] || fail "gate commit: SubagentStop перестал проверять правку" "$(gmr)"
+rm -rf "$GM" "$GMO"
+
 # --- gate-check: уже проверенное зелёным не проверяется заново -------------
 # У narta за этап 1.4 гейт гонял check.sh 131 раз (651 мин), 130 зелёных, и в
 # сотне ходов код перед этим не менялся. Счётчик прогонов — вне дерева.

@@ -55,8 +55,23 @@
 # списке зелёных, и его проверит Stop координатора после слияния.
 # MUAGBA_GATE_ALWAYS=1 отключает отсрочку.
 #
+# MUAGBA_GATE_STOP=commit — ход координатора (Stop) проверяется, только
+# когда сдвинулся HEAD: коммит, ff-слияние исполнителя, rebase. Правки без
+# коммита между ходами — середина работы, decision=skipped_midtask, в
+# список зелёных не пишется. Сигнал — по состоянию репозитория, а не по
+# дисциплине агента и не по формату доски: закрытие задачи всегда коммит
+# (код и отметка доски — одним коммитом, правило базы), а отметка
+# «[x]» в tasks.md пропускает доску вне репозитория и откат отметки.
+# Однажды проверенный HEAD не гоняется снова, пока не сдвинется, — кроме
+# красного: тогда каждый ход, пока не позеленеет. Предел: незакоммиченное
+# на остановке гейт не видит, и прерванный прогон не повторяется до
+# следующего коммита — их ловят SubagentStop, pre-push и CI. SubagentStop
+# режим не меняет. У narta 26.10 человек правил код по шагам, и каждый ход
+# гонял быструю часть по ~500 с.
+#
 # Каждый прогон — в журнал с длительностью: decision=pass|block|timeout|
-# released_on_question и duration_ms; пропуски — cached и deferred.
+# released_on_question и duration_ms; пропуски — cached, deferred и
+# skipped_midtask.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -131,6 +146,32 @@ if [ -n "$KEY" ] && green_has "$KEY"; then
   exit 0
 fi
 
+# Ход координатора в режиме commit: проверяется сдвинувшийся HEAD.
+STOPHEAD=""
+if [ "$EVENT" = "Stop" ] && [ "${MUAGBA_GATE_STOP:-}" = "commit" ] && [ -n "$KEY" ]; then
+  STOPHEAD=$(gitpath --git-path muagba-gate-stop-head)
+  STOP_TREE=$(python3 "$KEYPY" head "$WORK" 1 2>/dev/null | head -n 1)
+  SEEN="" SEEN_RESULT=""
+  [ -f "$STOPHEAD" ] && read -r SEEN SEEN_RESULT < "$STOPHEAD"
+  if [ -n "$STOP_TREE" ]; then
+    if [ "$STOP_TREE" = "$SEEN" ] && [ "$SEEN_RESULT" != "block" ]; then
+      log_event gate decision=skipped_midtask head_result="$SEEN_RESULT"
+      exit 0
+    fi
+    if green_has "$STOP_TREE"; then
+      # HEAD пришёл уже проверенным (ff исполнителя) — поверх правки без коммита.
+      printf '%s pass\n' "$STOP_TREE" > "$STOPHEAD" 2>/dev/null
+      log_event gate decision=skipped_midtask head_result=green
+      exit 0
+    fi
+    printf '%s started\n' "$STOP_TREE" > "$STOPHEAD" 2>/dev/null
+  fi
+fi
+stop_result() {  # <итог> — что вышло у HEAD этого хода
+  [ -n "$STOPHEAD" ] && [ -n "${STOP_TREE:-}" ] && printf '%s %s\n' "$STOP_TREE" "$1" > "$STOPHEAD" 2>/dev/null
+  return 0
+}
+
 # Последнее зелёное этого дерева, засчитанное событию, — база для
 # MUAGBA_GATE_CHANGED. Объект дерева мог уйти с git gc — тогда базы нет.
 BASE="" CHANGED=""
@@ -197,6 +238,7 @@ print(json.dumps({"systemMessage":
     "Зелёная ли проверка, неизвестно: ход отпущен без неё. Ускорьте check.sh "
     "или поднимите MUAGBA_GATE_TIMEOUT (и timeout хука)."}, ensure_ascii=False))' \
     "${MUAGBA_GATE_TIMEOUT:-1500}"
+  stop_result timeout
   log_event gate decision=timeout limit_s="${MUAGBA_GATE_TIMEOUT:-1500}" duration_ms="$DUR"
   exit 0
 fi
@@ -206,6 +248,7 @@ if [ $STATUS -eq 0 ]; then
   if [ -n "$KEY" ] && [ "$(python3 "$KEYPY" key "$WORK" 2>/dev/null)" = "$KEY" ]; then
     remember "$KEY" "$EVENT"
   fi
+  stop_result pass
   log_event gate decision=pass duration_ms="$DUR" ${BASE:+changed="$(wc -l < "$CHANGED" | tr -d ' ')"}
   exit 0
 fi
@@ -232,6 +275,7 @@ print(json.dumps({"systemMessage":
     f"Внимание: .claude/check.sh красный (код {sys.argv[1]}). Агент остановился "
     "ради вопроса, а не доложил готовность — работа не закончена."},
     ensure_ascii=False))' "$STATUS"
+  stop_result block
   log_event gate decision=released_on_question code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
   exit 0
 fi
@@ -247,5 +291,6 @@ fi
   echo "задай ему вопрос: остановку ради вопроса гейт не держит, а человек"
   echo "увидит, что проверка красная."
 } >&2
+stop_result block
 log_event gate decision=block code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
 exit 2
