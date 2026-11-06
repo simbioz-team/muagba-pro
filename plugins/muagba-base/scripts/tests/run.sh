@@ -1389,10 +1389,39 @@ printf '{"cwd":"%s","session_id":"S1"}' "$NM/np" | HOME="$NH" python3 "$SCRIPTS/
   || fail "night_status: ночная по пометке сессия без напоминания" ""
 printf '{"cwd":"%s","session_id":"S2"}' "$NM/np" | HOME="$NH" python3 "$SCRIPTS/night_status.py" | grep -q 'включены ночные правила' \
   || fail "night_status: другая сессия не предупреждена о ночных правилах" ""
-sw off >/dev/null
+# Вторая сессия того же проекта — своя ночь. До 0.22.5 состояние было одно
+# на машину: вторая получала «ночь уже включена», off первой снимал у всех.
+sw on --session S2 >/dev/null || fail "night_switch: вторая сессия не смогла включить ночь" "$(sw on --session S2)"
+[ -e "$NH/.claude/muagba-night/sessions/S2.json" ] || fail "night_switch: у второй сессии нет пометки ночи" ""
+sw status --session S2 | grep -q 'ночных сессий: 2' || fail "night_switch status: не видно двух ночных сессий" "$(sw status)"
+sw off --session S1 >/dev/null
+[ ! -e "$NH/.claude/muagba-night/sessions/S1.json" ] && [ -e "$NH/.claude/muagba-night/sessions/S2.json" ] \
+  || fail "night_switch off: снята не та пометка" "$(ls "$NH/.claude/muagba-night/sessions")"
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'Удаление build/ в T7' in d['autoMode']['allow'], d" \
+  "$NH/.claude/settings.json" || fail "night_switch off: правила ушли, пока другая сессия ночная" "$(cat "$NH/.claude/settings.json")"
+# Третья, не ночная, при двух ночных чужую ночь не снимает.
+sw on --session S3 >/dev/null
+sw off --session S4 >/dev/null && fail "night_switch off: не ночная сессия сняла чужую ночь из нескольких" ""
+sw off --all >/dev/null
 python3 -c "import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); assert a==b, (a,b)" \
   "$NH/.claude/settings.json" "$NM/user.before.json" || fail "night_switch off: настройки человека не вернулись к прежним" "$(cat "$NH/.claude/settings.json")"
-[ ! -e "$NH/.claude/muagba-night/sessions/S1.json" ] || fail "night_switch off: пометка ночи осталась" ""
+[ -z "$(ls "$NH/.claude/muagba-night/sessions")" ] || fail "night_switch off --all: пометки ночи остались" "$(ls "$NH/.claude/muagba-night/sessions")"
+[ ! -e "$NH/.claude/muagba-night/state.json" ] || fail "night_switch off --all: состояние осталось" ""
+# Одна ночная сессия — off из любой снимает её, как раньше (утро в другой сессии).
+sw on --session S1 >/dev/null; sw off --session S9 >/dev/null
+[ ! -e "$NH/.claude/muagba-night/sessions/S1.json" ] || fail "night_switch off: единственная ночь не снята из другой сессии" ""
+# Состояние старого формата (одна сессия) снимается.
+sw on --session S1 >/dev/null
+python3 - "$NH/.claude/muagba-night/state.json" <<'PY'
+import json, sys
+st = json.load(open(sys.argv[1]))
+old = {"session": "S1", "project": "p", "date": "d", "since": "s",
+       "added": {k: [r["item"] for r in v] for k, v in st["added"].items()}}
+json.dump(old, open(sys.argv[1], "w"))
+PY
+sw off --session S1 >/dev/null
+python3 -c "import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); assert a==b, (a,b)" \
+  "$NH/.claude/settings.json" "$NM/user.before.json" || fail "night_switch off: старое состояние не снято" "$(cat "$NH/.claude/settings.json")"
 
 # Обёртка каркаса .claude/night-switch: постоянный путь для разрешения,
 # находит плагин по installed_plugins.json, сессию берёт из окружения.
@@ -1402,7 +1431,7 @@ printf '{"plugins":{"muagba-base@muagba-pro":[{"scope":"user","installPath":"%s"
 mkdir -p "$NH/.claude/plugins"; cp "$NM/inst.json" "$NH/.claude/plugins/installed_plugins.json"
 (cd "$NM/np" && HOME="$NH" CLAUDE_CODE_SESSION_ID=S3 ./.claude/night-switch on >/dev/null) || fail "night-switch: ночь не включилась" ""
 [ -e "$NH/.claude/muagba-night/sessions/S3.json" ] || fail "night-switch: сессия не взята из CLAUDE_CODE_SESSION_ID" ""
-(cd "$NM/np" && HOME="$NH" ./.claude/night-switch status) | grep -q 'сессии S3' || fail "night-switch status" ""
+(cd "$NM/np" && HOME="$NH" ./.claude/night-switch status) | grep -q '^  S3: ' || fail "night-switch status" ""
 (cd "$NM/np" && HOME="$NH" ./.claude/night-switch off >/dev/null)
 [ ! -e "$NH/.claude/muagba-night/sessions/S3.json" ] || fail "night-switch off: пометка осталась" ""
 rm "$NH/.claude/plugins/installed_plugins.json"

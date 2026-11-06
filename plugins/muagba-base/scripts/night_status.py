@@ -64,10 +64,13 @@ def main() -> None:
         st = json.loads((nd / "state.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         st = {}
-    if st.get("added"):
-        msg = (f"В ~/.claude/settings.json включены ночные правила (с {st.get('since')}, сессия "
-               f"{st.get('session')}, проект {st.get('project')}). Если ночь закончилась — "
-               "/muagba-base:day или night_switch.py off: правила видят все сессии в режиме auto.")
+    # Формат до 0.22.5 — одна сессия в корне состояния.
+    sessions = st.get("sessions") or ({st["session"]: st} if st.get("added") and st.get("session") else {})
+    if sessions:
+        who = "; ".join(f"сессия {sid} с {i.get('since')}, проект {i.get('project')}"
+                        for sid, i in sessions.items())
+        msg = (f"В ~/.claude/settings.json включены ночные правила ({who}). Если ночь закончилась — "
+               "/muagba-base:day или night_switch.py off --all: правила видят все сессии в режиме auto.")
         print(json.dumps({"systemMessage": msg, "hookSpecificOutput": {
             "hookEventName": "SessionStart", "additionalContext": msg}}, ensure_ascii=False))
         return
