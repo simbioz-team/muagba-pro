@@ -3,6 +3,7 @@
 
     gate_key.py key <каталог>                 — отпечаток: хеш дерева git
     gate_key.py head <каталог> [<n>]          — отпечатки HEAD и n-1 первых предков
+    gate_key.py verified <каталог> [<ветка>…] — отпечатки общих предков HEAD с ветками
     gate_key.py changed <каталог> <было> <стало> — пути, разные в двух деревьях
     gate_key.py waiting [<предел, с>] < вход хука — живые фоновые задачи агента
 
@@ -83,17 +84,14 @@ def key(cwd: str) -> str:
     return tree.decode().strip() if tree else ""
 
 
-def head(cwd: str, n: int = 1) -> list[str]:
-    """Отпечатки HEAD и его первых предков (first-parent, до n штук) по
-    тем же правилам, что и key: без SKIP. Голое `<rev>^{tree}` с ключом
-    несравнимо, если проект держит .claude/logs в git."""
-    revs = git(cwd, "rev-list", "--first-parent", f"--max-count={n}", "HEAD")
-    if not revs:
-        return []
+def trees(cwd: str, revs: list[str]) -> list[str]:
+    """Отпечатки коммитов по тем же правилам, что и key: без SKIP. Голое
+    `<rev>^{tree}` с ключом несравнимо, если проект держит .claude/logs в
+    git. Первый непрочитанный коммит обрывает список."""
     out = []
     with tempfile.TemporaryDirectory() as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": os.path.join(tmp, "index")}
-        for rev in revs.decode().split():
+        for rev in revs:
             if git(cwd, "read-tree", rev, env=env) is None:
                 break
             if git(cwd, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", SKIP, env=env) is None:
@@ -102,6 +100,34 @@ def head(cwd: str, n: int = 1) -> list[str]:
             if not tree:
                 break
             out.append(tree.decode().strip())
+    return out
+
+
+def head(cwd: str, n: int = 1) -> list[str]:
+    """Отпечатки HEAD и его первых предков (first-parent, до n штук)."""
+    revs = git(cwd, "rev-list", "--first-parent", f"--max-count={n}", "HEAD")
+    return trees(cwd, revs.decode().split()) if revs else []
+
+
+def verified(cwd: str, refs: list[str]) -> list[str]:
+    """Отпечатки общих предков HEAD с ветками, проверенными вне гейта (CI на
+    PR, полная перед слиянием). Пустая строка в refs — ветка-источник
+    текущей (@{upstream}) и ветка по умолчанию origin (origin/HEAD).
+
+    Слияние PR делает хостинг, и в список зелёных гейта такие коммиты не
+    попадают. Без них база нового дерева — давний зелёный предок, а база
+    после rebase или слияния develop — дерево до него: в «изменённое»
+    уходит весь чужой код. У narta 06.11 сессия, писавшая только спеку,
+    получила 155–286 чужих путей и замеры вёрстки по 12 минут."""
+    names = [r for r in refs if r] or ["@{upstream}", "refs/remotes/origin/HEAD"]
+    bases = []
+    for ref in names:
+        mb = git(cwd, "merge-base", "HEAD", ref)
+        if mb and mb.decode().strip() not in bases:
+            bases.append(mb.decode().strip())
+    out = []
+    for b in bases:
+        out += trees(cwd, [b])
     return out
 
 
@@ -174,6 +200,8 @@ if __name__ == "__main__":
         print(key(a[1]))
     elif a[:1] == ["head"] and len(a) in (2, 3):
         print("\n".join(head(a[1], int(a[2]) if len(a) == 3 else 1)))
+    elif a[:1] == ["verified"] and len(a) >= 2:
+        print("\n".join(verified(a[1], a[2:])))
     elif len(a) == 4 and a[0] == "changed":
         try:
             sys.stdout.write("".join(p + "\n" for p in changed(a[1], a[2], a[3])))

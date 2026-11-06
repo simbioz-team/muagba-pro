@@ -787,8 +787,14 @@ gm Stop >/dev/null; [ "$(gmr)" = 2 ] || fail "gate commit: коммит не п�
 gm Stop >/dev/null; [ "$(gmr)" = 2 ] || fail "gate commit: тот же HEAD проверен снова" "$(gmr)"
 touch "$GM/bad.txt"; gmc red
 [ "$(gm Stop)" = 2 ] || fail "gate commit: красный HEAD не удержан" ""
-[ "$(gm Stop)" = 2 ] || fail "gate commit: красный HEAD не перепроверяется до зелёного" ""
-[ "$(gmr)" = 4 ] || fail "gate commit: красный гонялся не каждый ход" "$(gmr)"
+# Тот же красный HEAD без правок — прошлый итог без прогона, но ход держит.
+[ "$(gm Stop)" = 2 ] || fail "gate commit: красный HEAD отпущен повтором" ""
+[ "$(gmr)" = 3 ] || fail "gate commit: красное неизменное дерево прогнано заново" "$(gmr)"
+grep -q '"decision": "cached_red"' "$GM/.claude/logs/agents.jsonl" \
+  || fail "gate commit: повтор красного не записан в журнал" "$(tail -2 "$GM/.claude/logs/agents.jsonl")"
+# Окружение отпечаток не видит: прошлое красное живёт MUAGBA_GATE_RED_TTL.
+MUAGBA_GATE_RED_TTL=0 gm Stop >/dev/null
+[ "$(gmr)" = 4 ] || fail "gate commit: красное после MUAGBA_GATE_RED_TTL не перепроверено" "$(gmr)"
 rm "$GM/bad.txt"
 # Починка вернула уже зелёное дерево — пропуск по отпечатку, без прогона.
 [ "$(gm Stop)" = 0 ] || fail "gate commit: починка без коммита после красного не отпущена" ""
@@ -930,6 +936,61 @@ git -C "$GC" worktree add -q "$GO/wt4" "$G1" --detach 2>/dev/null; echo m > "$GO
 grep -qx 'base=[0-9a-f]*' "$GO/changed" && [ "$(sed 1d "$GO/changed" | sort | tr '\n' ' ')" = "journal.md mine.txt " ] \
   || fail "gate-check: база нового дерева не найдена у зелёного предка HEAD" "$(cat "$GO/changed")"
 
+# --- gate-check: база — проверенное дерево с наименьшим списком путей ------
+# Слияние PR делает хостинг, и в зелёные гейта оно не попадает. Ветка от
+# develop и develop, влитый в ветку, иначе отдавали проверке весь чужой код
+# как «изменённое»: у narta 06.11 сессия, писавшая спеку, получала 155–286
+# путей и замеры вёрстки по 12 минут.
+GV=$(mktemp -d); GVO=$(mktemp -d); mkdir -p "$GV/.claude/logs"; git -C "$GV" init -q
+printf '.claude/logs/\n' > "$GV/.gitignore"
+cat > "$GV/.claude/check.sh" <<SH
+#!/usr/bin/env bash
+echo run >> "$GVO/count"
+{ echo "base=\${MUAGBA_GATE_BASE:-нет}"; cat "\${MUAGBA_GATE_CHANGED:-/dev/null}"; } > "$GVO/changed"
+[ -f bad.txt ] && exit 1
+exit 0
+SH
+chmod +x "$GV/.claude/check.sh"
+gvc() { git -C "$GV" add -A; git -C "$GV" -c user.name=t -c user.email=t@t commit -qm "$1"; }
+gv() {  # [env…] → код гейта Stop
+  printf '{"hook_event_name":"Stop","last_assistant_message":"%s","cwd":"%s","session_id":"s"}' "${MSG:-Готово.}" "$GV" \
+    | env CLAUDE_PROJECT_DIR="$GV" "$@" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1; echo $?
+}
+gvr() { wc -l < "$GVO/count" | tr -d ' '; }
+echo a > "$GV/a.txt"; gvc init; gv >/dev/null          # зелёное A — последнее этого дерева
+# develop ушёл вперёд чужим кодом (слито хостингом, гейт его не видел)
+for i in 1 2 3; do echo "$i" > "$GV/code$i.py"; done; gvc pr
+git -C "$GV" update-ref refs/remotes/origin/develop HEAD
+echo d > "$GV/spec.md"; gv MUAGBA_GATE_VERIFIED=origin/develop >/dev/null
+[ "$(sed 1d "$GVO/changed")" = spec.md ] \
+  || fail "gate-check: в изменённое ушёл код, проверенный вне гейта" "$(cat "$GVO/changed")"
+# По умолчанию — origin/HEAD
+git -C "$GV" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
+echo e >> "$GV/spec.md"; rm -f "$GV/.git/muagba-gate-last"; gv >/dev/null
+[ "$(sed 1d "$GVO/changed")" = spec.md ] \
+  || fail "gate-check: origin/HEAD не взят проверенным по умолчанию" "$(cat "$GVO/changed")"
+# Без проверенных веток и без зелёного — базы нет, как раньше.
+git -C "$GV" update-ref -d refs/remotes/origin/HEAD; git -C "$GV" update-ref -d refs/remotes/origin/develop
+echo f >> "$GV/spec.md"; rm -f "$GV/.git/muagba-gate-last" "$GV/.git/muagba-gate-green"; gv >/dev/null
+[ "$(head -1 "$GVO/changed")" = "base=нет" ] \
+  || fail "gate-check: база найдена без зелёного и проверенных веток" "$(cat "$GVO/changed")"
+
+# --- gate-check: красное неизменное дерево не прогоняется снова ------------
+# У narta 44 повтора той же ошибки; у doc-service — 6 прогонов на ответы в
+# обсуждении спеки. Ход держится прошлым итогом, вопрос отпускается.
+touch "$GV/bad.txt"; N=$(gvr)
+[ "$(gv)" = 2 ] && [ "$(gvr)" = $((N + 1)) ] || fail "gate-check: красное не прогнано" "$(gvr)"
+[ "$(gv)" = 2 ] && [ "$(gvr)" = $((N + 1)) ] || fail "gate-check: красное неизменное дерево прогнано заново или отпущено" "$(gvr)"
+[ "$(MSG='Взять uuid?' gv)" = 0 ] && [ "$(gvr)" = $((N + 1)) ] \
+  || fail "gate-check: вопрос при прошлом красном не отпущен без прогона" "$(gvr)"
+echo g > "$GV/g.txt"
+[ "$(gv)" = 2 ] && [ "$(gvr)" = $((N + 2)) ] || fail "gate-check: правка после красного не проверена" "$(gvr)"
+[ "$(gv MUAGBA_GATE_ALWAYS=1)" = 2 ] && [ "$(gvr)" = $((N + 3)) ] \
+  || fail "gate-check: MUAGBA_GATE_ALWAYS не перепроверил красное" "$(gvr)"
+rm "$GV/bad.txt"; [ "$(gv)" = 0 ] || fail "gate-check: починка после красного не отпущена" ""
+[ ! -f "$GV/.git/muagba-gate-red" ] || fail "gate-check: красное не снято зелёным" ""
+rm -rf "$GV" "$GVO"
+
 # Остановка «жду свой фоновый прогон» — не сдача: гейт её не держит и
 # ничего не гоняет. Своё — id задачи есть в стенограмме агента; чужая
 # задача (сосед, координатор) сдачу не освобождает.
@@ -1020,7 +1081,7 @@ printf '.env\n' > "$LG/.claude/protected-paths.txt"
 printf '#!/usr/bin/env bash\necho "==> lint"\necho "==> tests"\necho "E   assert 1 == 2"\nexit 1\n' > "$LG/.claude/check.sh"
 chmod +x "$LG/.claude/check.sh"
 hook() {  # <скрипт> <json> — хук в проекте LG
-  printf '%s' "$2" | CLAUDE_PROJECT_DIR="$LG" bash "$SCRIPTS/$1" >/dev/null 2>&1
+  printf '%s' "$2" | CLAUDE_PROJECT_DIR="$LG" MUAGBA_GATE_RED_TTL=0 bash "$SCRIPTS/$1" >/dev/null 2>&1
 }
 hook gate-check.sh "{\"hook_event_name\":\"Stop\",\"session_id\":\"s\",\"last_assistant_message\":\"Готово.\",\"cwd\":\"$LG\"}"
 [ ! -e "$LG/.claude/logs" ] || fail "журнал: хук завёл .claude/logs/ в неподготовленном проекте" ""

@@ -40,8 +40,14 @@
 # передаёт проверке: MUAGBA_GATE_BASE — то дерево, MUAGBA_GATE_CHANGED —
 # файл со списком путей, по строке. Дорогие условные шаги (замеры вёрстки
 # у narta) проект решает по нему, а не по всей ветке: ветка фичи трогает
-# всё, и у narta замеры шли на каждом прогоне — 4 мин из 5. Зелёного
-# дерева нет или оно потеряно — переменных нет, проект решает как прежде.
+# всё, и у narta замеры шли на каждом прогоне — 4 мин из 5. База — то из
+# проверенных деревьев (последнее зелёное, зелёный предок HEAD, общий
+# предок с веткой, проверенной вне гейта), от которого изменилось меньше
+# всего. Проверенного нет — переменных нет, проект решает как прежде.
+#
+# Красное неизменное дерево не гоняется снова: тот же отпечаток и то же
+# событие в пределах MUAGBA_GATE_RED_TTL (600 с) — прошлый итог без
+# прогона, decision=cached_red; вопрос отпускается, как при прогоне.
 #
 # Остановка «жду свой фоновый прогон» — не сдача: агент проснётся по
 # уведомлению и остановится снова. Такие остановки гейт не держит и
@@ -63,15 +69,16 @@
 # (код и отметка доски — одним коммитом, правило базы), а отметка
 # «[x]» в tasks.md пропускает доску вне репозитория и откат отметки.
 # Однажды проверенный HEAD не гоняется снова, пока не сдвинется, — кроме
-# красного: тогда каждый ход, пока не позеленеет. Предел: незакоммиченное
+# красного: тогда каждый ход, пока не позеленеет, но неизменное красное
+# дерево отвечает прошлым итогом без прогона (ниже, MUAGBA_GATE_RED_TTL). Предел: незакоммиченное
 # на остановке гейт не видит, и прерванный прогон не повторяется до
 # следующего коммита — их ловят SubagentStop, pre-push и CI. SubagentStop
 # режим не меняет. У narta 26.10 человек правил код по шагам, и каждый ход
 # гонял быструю часть по ~500 с.
 #
 # Каждый прогон — в журнал с длительностью: decision=pass|block|timeout|
-# released_on_question и duration_ms; пропуски — cached, deferred и
-# skipped_midtask.
+# released_on_question и duration_ms; пропуски — cached, cached_red,
+# deferred и skipped_midtask.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -138,6 +145,54 @@ remember() {  # <дерево> <событие> — записать зелён�
   fi
 }
 
+# Вопрос — последняя непустая строка ответа кончается «?». Обёртки разметки
+# и закрывающие кавычки не мешают.
+is_question() {
+  printf '%s' "$(jq_get last_assistant_message)" | python3 -c '
+import sys
+lines = [l.strip() for l in sys.stdin.read().splitlines() if l.strip()]
+sys.exit(0 if lines and lines[-1].rstrip("*_`»\")» ").endswith("?") else 1)
+'
+}
+release_question() {  # <код>
+  python3 -c '
+import json, sys
+print(json.dumps({"systemMessage":
+    f"Внимание: .claude/check.sh красный (код {sys.argv[1]}). Агент остановился "
+    "ради вопроса, а не доложил готовность — работа не закончена."},
+    ensure_ascii=False))' "$1"
+}
+block_message() {  # <код> <вывод> [<пометка>]
+  {
+    echo "Гейт не пройден: .claude/check.sh завершился с кодом $1."
+    [ -n "${3:-}" ] && echo "$3"
+    echo "Ход не может быть закрыт, пока проверка красная."
+    echo "--- последние 50 строк вывода ---"
+    printf '%s\n' "$2" | tail -n 50
+    echo "--- ---"
+    echo "Что делать: исправь причину, а не подавляй симптом. Если проверка"
+    echo "падает не из-за твоих правок или без человека дальше не пройти —"
+    echo "задай ему вопрос: остановку ради вопроса гейт не держит, а человек"
+    echo "увидит, что проверка красная."
+  } >&2
+}
+# Последнее красное этого дерева: «дерево событие время код», строка
+# «где упало», хвост вывода. Тот же отпечаток и то же событие — проверка
+# дала бы то же самое, и гейт отвечает прошлым итогом без прогона. У narta
+# режим commit гонял красный HEAD на каждом ходу: 44 повтора той же
+# ошибки, однажды 10 подряд по ~50 с на упавшем сервере Playwright, у
+# doc-service — 6 прогонов на ответы в обсуждении спеки. Окружение (база,
+# браузер, порт) отпечаток не видит, поэтому прошлое красное живёт
+# MUAGBA_GATE_RED_TTL секунд (600): починил окружение — через столько же
+# гейт проверит снова. MUAGBA_GATE_ALWAYS=1 — без повтора.
+RED=$(gitpath --git-path muagba-gate-red)
+save_red() {  # <код> <где упало> <вывод>
+  [ -n "$RED" ] && [ -n "$KEY" ] || return 0
+  { printf '%s %s %s %s\n%s\n' "$KEY" "$EVENT" "$(date +%s)" "$1" "$2"
+    printf '%s\n' "$3" | tail -n 50; } > "$RED" 2>/dev/null
+  return 0
+}
+
 KEY=""
 [ -n "$LEDGER" ] && [ -n "$LAST" ] && [ -z "${MUAGBA_GATE_ALWAYS:-}" ] && KEY=$(python3 "$KEYPY" key "$WORK" 2>/dev/null)
 if [ -n "$KEY" ] && green_has "$KEY"; then
@@ -146,6 +201,23 @@ if [ -n "$KEY" ] && green_has "$KEY"; then
   printf '%s %s\n' "$KEY" "$EVENT" > "$LAST" 2>/dev/null
   log_event gate decision=cached
   exit 0
+fi
+
+if [ -n "$KEY" ] && [ -f "$RED" ]; then
+  read -r RKEY REVENT RTS RCODE < "$RED"
+  RAGE=$(( $(date +%s) - ${RTS:-0} ))
+  if [ "$RKEY" = "$KEY" ] && [ "$REVENT" = "$EVENT" ] && [ "$RAGE" -lt "${MUAGBA_GATE_RED_TTL:-600}" ]; then
+    RFAILED=$(sed -n 2p "$RED")
+    if is_question; then
+      release_question "$RCODE"
+      log_event gate decision=released_on_question code="$RCODE" failed_at="$RFAILED" cached_red_s="$RAGE"
+      exit 0
+    fi
+    block_message "$RCODE" "$(sed 1,2d "$RED")" \
+      "Это итог прогона $RAGE с назад: рабочие файлы с тех пор не менялись, и проверка не запускалась. Починил окружение, а не файлы, — гейт проверит снова через $(( ${MUAGBA_GATE_RED_TTL:-600} - RAGE )) с."
+    log_event gate decision=cached_red code="$RCODE" failed_at="$RFAILED" cached_red_s="$RAGE"
+    exit 2
+  fi
 fi
 
 # Ход координатора в режиме commit: проверяется сдвинувшийся HEAD.
@@ -174,41 +246,51 @@ stop_result() {  # <итог> — что вышло у HEAD этого хода
   return 0
 }
 
-# Последнее зелёное этого дерева, засчитанное событию, — база для
-# MUAGBA_GATE_CHANGED. Объект дерева мог уйти с git gc — тогда базы нет.
+# База для MUAGBA_GATE_CHANGED — проверенное дерево, от которого
+# изменилось меньше всего. Кандидаты, все проверенные для этого события:
+# - последнее зелёное этого дерева (объект мог уйти с git gc);
+# - ближайшее зелёное по первым родителям HEAD (до MUAGBA_GATE_BASE_DEPTH,
+#   20): исполнитель начинает с головы ветки фичи, а она — слитое дерево
+#   прошлого исполнителя плюс коммит журнала координатора; у narta на 022
+#   без этого первый прогон каждого дерева гонял замеры вёрстки — 22
+#   прогона, ~88 мин;
+# - общие предки HEAD с ветками, проверенными вне гейта (gate_key.py
+#   verified; MUAGBA_GATE_VERIFIED — ветки через пробел, по умолчанию
+#   @{upstream} и origin/HEAD; none — не доверять): слияние PR делает
+#   хостинг, и в зелёные гейта оно не попадает.
+# Меньший список, а не первый найденный: после rebase или слияния develop
+# последнее зелёное — дерево до чужого кода, и в «изменённое» уходил весь
+# он. У narta 06.11 сессия, писавшая только спеку, получала 155–286 чужих
+# путей и замеры вёрстки по 12 минут на ответ. База только сужает список
+# путей: прогон по ней не пропускается.
 BASE="" CHANGED=""
-if [ -n "$KEY" ] && [ -f "$LAST" ]; then
-  read -r LTREE LEVENT < "$LAST"
-  case " $ACCEPT " in *" ${LEVENT:-} "*)
-    if git -C "$WORK" cat-file -e "${LTREE:-x}^{tree}" 2>/dev/null; then
-      CHANGED=$(mktemp "${TMPDIR:-/tmp}/muagba-gate-changed.XXXXXX") || CHANGED=""
-      if [ -n "$CHANGED" ] && python3 "$KEYPY" changed "$WORK" "$LTREE" "$KEY" > "$CHANGED" 2>/dev/null; then
-        BASE=$LTREE
-      else
-        rm -f "$CHANGED"; CHANGED=""
-      fi
-    fi ;;
-  esac
-fi
-# Последнего зелёного в этом дереве нет (оно новое) — база от ближайшего
-# зелёного для события коммита по первым родителям HEAD (до
-# MUAGBA_GATE_BASE_DEPTH, 20). Исполнитель начинает с головы ветки фичи, а
-# она — слитое дерево прошлого исполнителя плюс коммит журнала
-# координатора: зелёное для SubagentStop — HEAD^, не HEAD. Без этого у
-# narta на 022 первый прогон каждого дерева решал от merge-base и гонял
-# замеры вёрстки: 22 прогона, ~88 мин. База только сужает список путей:
-# принимаемое событие то же, и прогон не пропускается.
-if [ -n "$KEY" ] && [ -z "$BASE" ]; then
+if [ -n "$KEY" ]; then
+  CANDS=()
+  if [ -f "$LAST" ]; then
+    read -r LTREE LEVENT < "$LAST"
+    case " $ACCEPT " in *" ${LEVENT:-} "*) CANDS+=("${LTREE:-}") ;; esac
+  fi
   while read -r HTREE; do
-    [ -n "$HTREE" ] && green_has "$HTREE" || continue
-    CHANGED=$(mktemp "${TMPDIR:-/tmp}/muagba-gate-changed.XXXXXX") || CHANGED=""
-    if [ -n "$CHANGED" ] && python3 "$KEYPY" changed "$WORK" "$HTREE" "$KEY" > "$CHANGED" 2>/dev/null; then
-      BASE=$HTREE
-    else
-      rm -f "$CHANGED"; CHANGED=""
-    fi
-    break
+    [ -n "$HTREE" ] && green_has "$HTREE" && { CANDS+=("$HTREE"); break; }
   done < <(python3 "$KEYPY" head "$WORK" "${MUAGBA_GATE_BASE_DEPTH:-20}" 2>/dev/null)
+  # shellcheck disable=SC2086  # ветки — через пробел
+  while read -r VTREE; do
+    [ -n "$VTREE" ] && CANDS+=("$VTREE")
+  done < <(python3 "$KEYPY" verified "$WORK" ${MUAGBA_GATE_VERIFIED:-} 2>/dev/null)
+  BEST_N=""
+  for C in ${CANDS[@]+"${CANDS[@]}"}; do
+    [ -n "$C" ] && git -C "$WORK" cat-file -e "$C^{tree}" 2>/dev/null || continue
+    T=$(mktemp "${TMPDIR:-/tmp}/muagba-gate-changed.XXXXXX") || continue
+    if python3 "$KEYPY" changed "$WORK" "$C" "$KEY" > "$T" 2>/dev/null; then
+      N=$(wc -l < "$T" | tr -d ' ')
+      if [ -z "$BEST_N" ] || [ "$N" -lt "$BEST_N" ]; then
+        [ -n "$CHANGED" ] && rm -f "$CHANGED"
+        BASE=$C CHANGED=$T BEST_N=$N
+        continue
+      fi
+    fi
+    rm -f "$T"
+  done
 fi
 trap '[ -n "$CHANGED" ] && rm -f "$CHANGED"' EXIT
 
@@ -250,6 +332,7 @@ if [ $STATUS -eq 0 ]; then
   if [ -n "$KEY" ] && [ "$(python3 "$KEYPY" key "$WORK" 2>/dev/null)" = "$KEY" ]; then
     remember "$KEY" "$EVENT"
   fi
+  rm -f "$RED" 2>/dev/null
   stop_result pass
   log_event gate decision=pass duration_ms="$DUR" ${BASE:+changed="$(wc -l < "$CHANGED" | tr -d ' ')"}
   exit 0
@@ -264,35 +347,14 @@ lines = [l.strip() for l in sys.stdin.read().splitlines() if l.strip()]
 heads = [l for l in lines if l.startswith("==>")]
 print((heads or lines or [""])[-1][:200])')
 
-# Вопрос — последняя непустая строка ответа кончается «?». Обёртки разметки
-# и закрывающие кавычки не мешают.
-if printf '%s' "$(jq_get last_assistant_message)" | python3 -c '
-import sys
-lines = [l.strip() for l in sys.stdin.read().splitlines() if l.strip()]
-sys.exit(0 if lines and lines[-1].rstrip("*_`»\")» ").endswith("?") else 1)
-'; then
-  python3 -c '
-import json, sys
-print(json.dumps({"systemMessage":
-    f"Внимание: .claude/check.sh красный (код {sys.argv[1]}). Агент остановился "
-    "ради вопроса, а не доложил готовность — работа не закончена."},
-    ensure_ascii=False))' "$STATUS"
+save_red "$STATUS" "$FAILED_AT" "$OUTPUT"
+if is_question; then
+  release_question "$STATUS"
   stop_result block
   log_event gate decision=released_on_question code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
   exit 0
 fi
-
-{
-  echo "Гейт не пройден: .claude/check.sh завершился с кодом $STATUS."
-  echo "Ход не может быть закрыт, пока проверка красная."
-  echo "--- последние 50 строк вывода ---"
-  printf '%s\n' "$OUTPUT" | tail -n 50
-  echo "--- ---"
-  echo "Что делать: исправь причину, а не подавляй симптом. Если проверка"
-  echo "падает не из-за твоих правок или без человека дальше не пройти —"
-  echo "задай ему вопрос: остановку ради вопроса гейт не держит, а человек"
-  echo "увидит, что проверка красная."
-} >&2
+block_message "$STATUS" "$OUTPUT"
 stop_result block
 log_event gate decision=block code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
 exit 2
