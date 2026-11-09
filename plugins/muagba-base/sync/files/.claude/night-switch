@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Ночь в текущей сессии (ADR-0016 базы muagba-pro): on | off | status.
-#   ./.claude/night-switch on      — ночные правила в ~/.claude/settings.json
-#   ./.claude/night-switch off     — убрать ровно добавленное
-#   ./.claude/night-switch status
+# Ночь конкретной сессии (ADR-0016 базы muagba-pro): on | off | status.
+#   ./.claude/night-switch on      — проверить, что ночь можно начать, и
+#                                    выдать строки запуска лаунчером
+#   ./.claude/night-switch off     — утро: снять ночь (вопросы — снова
+#                                    человеку), строка перезапуска
+#   ./.claude/night-switch status  — какие сессии ночные
 #
 # Обёртка над night_switch.py установленного плагина. Нужна ради
 # постоянного пути: путь плагина меняется с каждой версией, а разрешение в
 # .claude/settings.json пишется один раз — `Bash(./.claude/night-switch *)`.
-# С ним /muagba-base:night и /muagba-base:day переключают ночь сами, без
-# строки в терминале. Порог прежний: on не включит ночь без утверждённого
-# человеком на сегодня (.claude/night/approved.json), а скил — без его «да».
+# С ним /muagba-base:night и /muagba-base:day зовут её сами. Сама ночь —
+# только процесс, запущенный .claude/claude-night: правила контролёра
+# видит он один.
 #
 # Сессия — из CLAUDE_CODE_SESSION_ID, его Claude Code даёт командам агента.
 set -uo pipefail

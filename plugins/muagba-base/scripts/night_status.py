@@ -7,6 +7,8 @@
 
 - MUAGBA_MODE=night — напоминание агенту в контекст: человека нет, что
   делать, когда упёрся.
+- Пометка ночи сессии (~/.claude/muagba-night/sessions/<id>.json) у
+  сессии, поднятой не лаунчером, снимается: ночь ушла перезапуском.
 - Не ночь, но утверждённые на сегодня разрешения есть
   (.claude/night/approved.json с сегодняшней датой — в каталоге сессии, в
   основном checkout или в его рабочих деревьях) — предупреждение человеку и
@@ -50,16 +52,38 @@ def main() -> None:
     cwd = Path(inp.get("cwd") or os.getcwd())
     sid = str(inp.get("session_id") or "")
     nd = Path(os.path.expanduser("~")) / ".claude" / "muagba-night"
-    flagged = bool(sid) and (nd / "sessions" / f"{sid}.json").is_file()
-    if os.environ.get("MUAGBA_MODE") == "night" or flagged:
+    flag = nd / "sessions" / f"{sid}.json" if sid else None
+    try:
+        fd = json.loads(flag.read_text(encoding="utf-8")) if flag else None
+    except (OSError, ValueError):
+        fd = {} if flag and flag.exists() else None
+    night = os.environ.get("MUAGBA_MODE") == "night"
+    if fd is not None:
+        # Пометка живёт, пока жив ночной процесс. Сессия поднята не
+        # лаунчером — ночь ушла перезапуском. Лаунчер старше 0.22.6 пометку
+        # не ставит, и закрытая утром прошлой ночи досталась бы этой ночи:
+        # закрытая до начала ночи — старая.
+        stale = not night
+        if night and fd.get("ended"):
+            try:
+                start = datetime.datetime.fromisoformat(os.environ.get("MUAGBA_NIGHT_START", "")).timestamp()
+            except ValueError:
+                start = 0
+            stale = float(fd.get("ended_ts") or 0) < start
+        if stale:
+            try:
+                flag.unlink()
+            except OSError:
+                pass
+            fd = None
+    if night and not (fd or {}).get("ended"):
         print("Ночной режим (ADR-0016): человека нет до утра. Всё, что требует его, — вопрос или "
               "действие сверх утверждённого на подготовке, — получит отказ и попадёт в "
               ".claude/logs/morning.md. Не жди и не обходи: обратимое реши по умолчанию со "
               "«Спросить: да», необратимое отложи и бери следующую независимую задачу.")
         return
-    # Ночные правила лежат в пользовательских настройках, а эта сессия — не
-    # ночная: забыли выключить ночь или сессия упала. Правила видят все
-    # сессии в auto.
+    # Остатки ночи в той же сессии (до 0.22.6): правила в пользовательских
+    # настройках, их видят все сессии в auto.
     try:
         st = json.loads((nd / "state.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -69,8 +93,8 @@ def main() -> None:
     if sessions:
         who = "; ".join(f"сессия {sid} с {i.get('since')}, проект {i.get('project')}"
                         for sid, i in sessions.items())
-        msg = (f"В ~/.claude/settings.json включены ночные правила ({who}). Если ночь закончилась — "
-               "/muagba-base:day или night_switch.py off --all: правила видят все сессии в режиме auto.")
+        msg = (f"В ~/.claude/settings.json остались ночные правила старой схемы ({who}). Убрать — "
+               "./.claude/night-switch off: правила видят все сессии в режиме auto.")
         print(json.dumps({"systemMessage": msg, "hookSpecificOutput": {
             "hookEventName": "SessionStart", "additionalContext": msg}}, ensure_ascii=False))
         return
@@ -78,7 +102,7 @@ def main() -> None:
     if f:
         msg = (f"Подготовка к ночи на сегодня есть ({f}), но эта сессия запущена без лаунчера — "
                "ночной режим НЕ действует: вопросы и подтверждения будут ждать человека. "
-               "Включить ночь в этой же сессии — /muagba-base:night.")
+               "Начать ночь этой сессии — /muagba-base:night.")
         print(json.dumps({"systemMessage": msg,
                           "hookSpecificOutput": {"hookEventName": "SessionStart",
                                                  "additionalContext": msg}}, ensure_ascii=False))

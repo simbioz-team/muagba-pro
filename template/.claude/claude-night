@@ -19,7 +19,20 @@
 #   --yes  подтверждение уже дано (без утверждённого на сегодня — отказ:
 #          подготовка требует человека и терминала);
 #   --bg   ночь — фоновой сессией Claude (claude --bg): терминал не нужен,
-#          смотреть — claude attach <id>.
+#          смотреть — claude attach <id>;
+#   --approved <файл>  утверждённое на сегодня — файл, который записала
+#          подготовка этой сессии. Без него — approved.json из каталога
+#          сессии, если он сегодняшний, иначе лежащий рядом с лаунчером.
+#          06.11 у narta лаунчер из основного checkout'а взял оттуда
+#          approved.json от 04.11, а подготовка сессии лежала в рабочем
+#          дереве.
+#
+# Ночь — у одной сессии (с 0.22.6). Правила контролёра видит только этот
+# процесс, а лаунчер ставит пометку ночи сессии
+# (~/.claude/muagba-night/sessions/<id>.json): по ней утро
+# (/muagba-base:day) выключает отказы хуков сразу, а ночные права уходят
+# перезапуском обычным claude. Без --resume номер новой сессии лаунчер
+# задаёт сам (--session-id).
 #
 # Каталог запуска. С --resume <сессия> ночь идёт в каталоге этой сессии —
 # Claude продолжает сессию только оттуда, где она начата, а лаунчер может
@@ -35,23 +48,31 @@ CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 TODAY=$(date +%F)
 
 # Свои флаги лаунчера; остальное уходит claude как есть.
-YES=""; BG=""; ARGS=()
+YES=""; BG=""; APPROVED_ARG=""; ARGS=(); prev=""
 for a in "$@"; do
+  if [ "$prev" = --approved ]; then APPROVED_ARG="$a"; prev=""; continue; fi
   case "$a" in
     --yes) YES=1 ;;
     --bg) BG=1 ;;
+    --approved) ;;
+    --approved=*) APPROVED_ARG="${a#--approved=}" ;;
     *) ARGS+=("$a") ;;
   esac
+  prev="$a"
 done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 # Каталог сессии из --resume: первая запись стенограммы с полем cwd.
 RUN_DIR="$PWD"
-SESSION=""
+SESSION=""; SID=""; CONT=""
 prev=""
 for a in "$@"; do
-  case "$prev" in --resume|-r) SESSION="$a" ;; esac
-  case "$a" in --resume=*) SESSION="${a#--resume=}" ;; esac
+  case "$prev" in --resume|-r) SESSION="$a" ;; --session-id) SID="$a" ;; esac
+  case "$a" in
+    --resume=*) SESSION="${a#--resume=}" ;;
+    --session-id=*) SID="${a#--session-id=}" ;;
+    --continue|-c) CONT=1 ;;
+  esac
   prev="$a"
 done
 if [ -n "$SESSION" ]; then
@@ -76,6 +97,15 @@ PY
   fi
 fi
 echo "claude-night: ночь пойдёт в $RUN_DIR"
+
+# Утверждённое: указанное явно; иначе — каталога сессии, если сегодняшнее.
+if [ -n "$APPROVED_ARG" ]; then
+  case "$APPROVED_ARG" in /*) APPROVED="$APPROVED_ARG" ;; *) APPROVED="$PWD/$APPROVED_ARG" ;; esac
+elif [ -f "$RUN_DIR/.claude/night/approved.json" ] \
+  && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("date")==sys.argv[2] else 1)' \
+     "$RUN_DIR/.claude/night/approved.json" "$TODAY" 2>/dev/null; then
+  APPROVED="$RUN_DIR/.claude/night/approved.json"
+fi
 
 approved_today() {
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("date")==sys.argv[2] else 1)' \
@@ -135,14 +165,29 @@ if [ -z "$YES" ]; then
   [ "$ANSWER" = y ] || [ "$ANSWER" = Y ] || { echo "Отменено."; exit 1; }
 fi
 
+# Номер сессии — для пометки ночи. --continue номер не называет: ночь
+# пойдёт без пометки, утро снимет её только перезапуском.
+if [ -n "$SESSION" ]; then
+  SID="$SESSION"
+elif [ -z "$SID" ] && [ -z "$CONT" ]; then
+  SID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+  set -- --session-id "$SID" "$@"
+fi
+if [ -n "$SID" ] && [ -f "$PLUGIN_SCRIPTS/night_switch.py" ]; then
+  python3 "$PLUGIN_SCRIPTS/night_switch.py" mark --session "$SID" --cwd "$RUN_DIR" \
+    --project "$ROOT" --approved "$APPROVED" >/dev/null \
+    || echo "claude-night: пометка ночи не поставлена — утром ночь снимется только перезапуском." >&2
+fi
+
 export MUAGBA_MODE=night
 export MUAGBA_NIGHT_START
 cd "$RUN_DIR" || exit 1
+# Сессия начинает с поручения, иначе она просто ждала бы ввода — а
+# человека, который введёт, нет.
+PROMPT="Ночь началась (ночной режим, ADR-0016). Работай по плану из ${APPROVED}: задачи по порядку, утверждённые разрешения. Упёрся в человека — запиши и бери следующую независимую задачу. Утром — /muagba-base:night-report."
 if [ -n "$BG" ]; then
-  # Фоновая сессия начинает с поручения, иначе она просто ждала бы ввода.
-  PROMPT="Ночь началась (ночной режим, ADR-0016). Работай по плану из ${APPROVED}: задачи по порядку, утверждённые разрешения. Упёрся в человека — запиши и бери следующую независимую задачу. Утром — /muagba-base:night-report."
   "$CLAUDE_BIN" --bg --permission-mode auto --settings "$MERGED" "$@" "$PROMPT" || exit 1
   echo "claude-night: ночь запущена в фоне. Смотреть: claude agents, claude attach <id>. Дневную сессию координатора закройте — иначе их будет две."
   exit 0
 fi
-exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@"
+exec "$CLAUDE_BIN" --permission-mode auto --settings "$MERGED" "$@" "$PROMPT"
