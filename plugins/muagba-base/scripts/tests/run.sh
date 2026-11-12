@@ -158,6 +158,18 @@ if [ -d "$TEMPLATE" ]; then
   OUT=$(cd "$DEST" && python3 "$SCRIPTS/copy_template.py" 2>&1)
   grep -q '@AGENTS.md' "$DEST/CLAUDE.md" 2>/dev/null \
     || fail "copy_template: второй проход не занял освободившееся имя" "$OUT"
+
+  # AGENTS.md — ссылка на CLAUDE.md (nastavnik): совпадение обязано быть
+  # названо ссылкой, иначе перенос CLAUDE.md → AGENTS.md её ломает.
+  LINKED=$(mktemp -d)
+  printf '# Мой свод правил\n' > "$LINKED/CLAUDE.md"
+  ln -s CLAUDE.md "$LINKED/AGENTS.md"
+  OUT=$(cd "$LINKED" && python3 "$SCRIPTS/copy_template.py" --dry-run 2>&1)
+  printf '%s' "$OUT" | grep -q '^  AGENTS.md  (ссылка → CLAUDE.md)$' \
+    || fail "copy_template: AGENTS.md-ссылка не названа ссылкой" "$OUT"
+  printf '%s' "$OUT" | grep -q '^  CLAUDE.md$' \
+    || fail "copy_template: обычный файл помечен ссылкой" "$OUT"
+  rm -rf "$LINKED"
   rm -rf "$DEST"
 fi
 

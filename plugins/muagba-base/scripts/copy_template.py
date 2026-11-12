@@ -56,6 +56,20 @@ def plan(src: Path, dst: Path) -> tuple[list[str], list[str], list[str]]:
     return fresh, differs, same
 
 
+def link_note(path: Path, root: Path) -> str:
+    """Пометка для совпадения-ссылки. У nastavnik AGENTS.md был ссылкой на
+    CLAUDE.md, и механический перенос «CLAUDE.md → AGENTS.md» её ломал: по
+    выводу совпадение выглядело обычным файлом. Ссылку разбирают иначе —
+    сначала убирают её, потом переносят то, на что она указывала."""
+    if not path.is_symlink():
+        return ""
+    try:
+        target = path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        target = str(path.resolve())
+    return f"  (ссылка → {target})"
+
+
 def copy(src: Path, dst: Path, fresh: list[str]) -> None:
     for rel in fresh:
         target = dst / rel
@@ -98,7 +112,7 @@ def main() -> int:
     # затереть: дальше конвейер опирается на содержимое этих файлов.
     print(f"совпало по имени, содержимое своё: {len(differs)}")
     for rel in differs:
-        print(f"  {rel}")
+        print(f"  {rel}{link_note(dst / rel, dst)}")
     return 0
 
 
