@@ -2181,6 +2181,71 @@ python3 "$SCRIPTS/guards_switch.py" off --cwd "$NG" >/dev/null && [ -f "$NG/.cla
   || fail "guards: вне git не работает" ""
 rm -rf "$GW" "$NG"
 
+# --- worktree_include: .env в дерево, заведённое git worktree add --------------
+# Claude Code копирует .worktreeinclude только в свои деревья. У narta (17.11)
+# дерево от `git worktree add` осталось без .env, гейт краснел ~12 ходов, а
+# копию агенту запрещала защита .env. Теперь её кладёт база.
+WI=$(mktemp -d); git -C "$WI" init -q
+mkdir -p "$WI/.claude/logs"
+printf '.env\n.claude/worktrees/\n.claude/logs/\n' > "$WI/.gitignore"
+printf '.env\n' > "$WI/.worktreeinclude"
+printf '.env\n' > "$WI/.claude/protected-paths.txt"
+cat > "$WI/.claude/check.sh" <<'SH'
+#!/usr/bin/env bash
+[ -f .env ] || { echo "нет .env"; exit 1; }
+SH
+chmod +x "$WI/.claude/check.sh"
+git -C "$WI" add -A; git -C "$WI" -c user.name=t -c user.email=t@t commit -qm init
+printf 'SECRET=1\n' > "$WI/.env"
+wadd() { git -C "$WI" worktree add -q "$WI/.claude/worktrees/$1" -b "$1" 2>/dev/null; }
+whook() {  # <команда> → stdout хука
+  printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s"}' \
+    "$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" "$WI" \
+    | python3 "$SCRIPTS/worktree_include.py" hook
+}
+wadd t1; mkdir -p "$WI/.claude/worktrees/own"; wadd own
+printf 'MINE=1\n' > "$WI/.claude/worktrees/own/.env"
+OUT=$(whook "git worktree add .claude/worktrees/t1 -b t1")
+cmp -s "$WI/.env" "$WI/.claude/worktrees/t1/.env" \
+  || fail "worktree_include: после git worktree add .env в дерево не положен" "$OUT"
+printf '%s' "$OUT" | grep -q 'additionalContext' \
+  || fail "worktree_include: агенту не сказано, что положено" "$OUT"
+printf '%s' "$OUT" | grep -q 'SECRET' \
+  && fail "worktree_include: содержимое .env напечатано" "$OUT"
+grep -q 'MINE=1' "$WI/.claude/worktrees/own/.env" \
+  || fail "worktree_include: свой .env дерева затёрт" ""
+rm "$WI/.claude/worktrees/t1/.env"
+[ -z "$(whook "git status")" ] && [ ! -e "$WI/.claude/worktrees/t1/.env" ] \
+  || fail "worktree_include: сработал не на git worktree add" ""
+
+# Гейт: дерево без .env наполняется до проверки, и проверка зелёная.
+printf '{"hook_event_name":"Stop","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' \
+  "$WI/.claude/worktrees/t1" | CLAUDE_PROJECT_DIR="$WI" bash "$SCRIPTS/gate-check.sh" >/dev/null 2>&1 \
+  || fail "worktree_include: гейт не доложил .env и покраснел" ""
+cmp -s "$WI/.env" "$WI/.claude/worktrees/t1/.env" \
+  || fail "worktree_include: гейт не положил .env в дерево" ""
+
+# guard-bash: cp .env в дерево — отказ с подсказкой, а файл кладёт база.
+wadd t2
+GOUT=$(printf '{"tool_input":{"command":"cp %s/.env .claude/worktrees/t2/.env"},"cwd":"%s"}' "$WI" "$WI" \
+  | bash "$SCRIPTS/guard-bash.sh" 2>&1); GCODE=$?
+[ "$GCODE" -eq 2 ] || fail "worktree_include: guard-bash пропустил запись .env" "$GOUT"
+printf '%s' "$GOUT" | grep -q 'копировать не нужно' \
+  || fail "worktree_include: отказ guard-bash без подсказки" "$GOUT"
+cmp -s "$WI/.env" "$WI/.claude/worktrees/t2/.env" \
+  || fail "worktree_include: guard-bash не положил .env в дерево" "$GOUT"
+# А правка .env основного checkout'а — обычный отказ.
+GOUT=$(printf '{"tool_input":{"command":"echo X=1 >> .env"},"cwd":"%s"}' "$WI" \
+  | bash "$SCRIPTS/guard-bash.sh" 2>&1)
+printf '%s' "$GOUT" | grep -q 'правит человек' \
+  || fail "worktree_include: правка .env основного checkout'а не отказана как прежде" "$GOUT"
+
+# Без .worktreeinclude — no-op.
+rm "$WI/.worktreeinclude"; rm "$WI/.claude/worktrees/t1/.env"
+[ -z "$(whook "git worktree add x")" ] && [ ! -e "$WI/.claude/worktrees/t1/.env" ] \
+  || fail "worktree_include: без .worktreeinclude не no-op" ""
+rm -rf "$WI"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"

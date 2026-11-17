@@ -63,6 +63,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/log-wait.sh\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/worktree_include.py\" hook",
+            "timeout": 30
           }
         ]
       }

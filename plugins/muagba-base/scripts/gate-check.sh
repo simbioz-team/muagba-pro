@@ -106,6 +106,13 @@ CHECK="$WORK/.claude/check.sh"
 if guards_off "$WORK"; then log_event gate decision=guards_off; exit 0; fi
 [ -x "$CHECK" ] || exit 0
 
+# Дерево, заведённое `git worktree add` мимо Claude Code, стартует без файлов
+# из .worktreeinclude (.env), и проверка падает на окружении, а не на коде:
+# у narta 17.11 — ~12 красных ходов подряд. Докладываем недостающее копией
+# основного checkout'а; своё дерева не трогается. Нет .worktreeinclude — no-op.
+PLACED=$(python3 "$(dirname "${BASH_SOURCE[0]}")/worktree_include.py" fill "$WORK" 2>/dev/null | tr '\n' ' ')
+[ -n "$PLACED" ] && log_event gate worktree_include="${PLACED% }"
+
 KEYPY="$(dirname "${BASH_SOURCE[0]}")/gate_key.py"
 if [ -z "${MUAGBA_GATE_ALWAYS:-}" ]; then
   WAIT=$(printf '%s' "$HOOK_INPUT" | python3 "$KEYPY" waiting "${MUAGBA_GATE_DEFER_MAX_S:-${MUAGBA_GATE_TIMEOUT:-1500}}" 2>/dev/null)

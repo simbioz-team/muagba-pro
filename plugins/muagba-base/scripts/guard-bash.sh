@@ -142,6 +142,15 @@ if [ -n "$TARGETS" ]; then
     abs=$(abs_path "$target")
     if pat=$(protected_pattern_for "$abs"); then
       CLASS=write-protected; TARGET="$pat"
+      # Копия .env и прочего из .worktreeinclude в рабочее дерево — не правка,
+      # её делает база. Агент без подсказки шёл к человеку (narta, 17.11).
+      if python3 "$(dirname "${BASH_SOURCE[0]}")/worktree_include.py" covers "$abs" 2>/dev/null; then
+        python3 "$(dirname "${BASH_SOURCE[0]}")/worktree_include.py" fill "$(dirname "$abs")" >/dev/null 2>&1
+        if [ -e "$abs" ]; then
+          block "запись в защищённый путь '$target'" \
+                "копировать не нужно: файл из .worktreeinclude, база положила в дерево копию основного checkout'а — она уже на месте. Сама база кладёт такие файлы после \`git worktree add\` и перед гейтом."
+        fi
+      fi
       block "запись в защищённый путь '$target'" \
             "этот файл правит человек. Шаблон '$pat' из .claude/protected-paths.txt."
     fi
