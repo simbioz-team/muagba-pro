@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "muagba-base",
-      "description": "Механика мультиагентной разработки: защита путей, гейт проверки на Stop, журнал агентов, пере-инъекция инвариантов после компакции, роли implementer/reviewer/researcher и скилы настройки проекта.",
+      "description": "Механика мультиагентной разработки: защита путей, гейт проверки на Stop, журнал агентов, пере-инъекция инвариантов после компакции, роли architect/researcher/implementer/implementer-deep/reviewer/acceptance с моделью по шагу и скилы настройки проекта.",
       "source": "./plugins/muagba-base",
       "category": "productivity"
     }
