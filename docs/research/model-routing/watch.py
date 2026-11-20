@@ -8,6 +8,18 @@
 
 Нормировка — на активный час: 10-минутные отрезки, в которых был хоть один
 запрос. Объём работы до и после разный, сырые доллары не сравнимы.
+
+Второе мерило — **цена сделанной задачи** по проекту: весь расход проекта в
+окне (координатор и субагенты, все сессии) делится на задачи, сделанные в
+окне. Что считать сделанным, видно по git проекта, по всем веткам:
+
+- есть `specs/*/tasks.md` — отметки `- [x]`, первое появление каждой задачи;
+- нет — влитые ветки задач: коммиты слияния `Merge <ветка>…`, кроме слияния
+  основной ветки внутрь.
+
+Карточки Narta не годятся: одна карточка — несколько этапов за дни, а «на
+проверку» сессии переводят её редко. Задачи, закоммиченные без слияния и без
+отметки, не видны — цена задачи у такого проекта завышена.
 """
 from __future__ import annotations
 
@@ -15,6 +27,8 @@ import argparse
 import glob
 import json
 import os
+import re
+import subprocess
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -62,6 +76,67 @@ def cost(model, u) -> tuple[float, float, int]:
     return total, over, u.get("output_tokens", 0)
 
 
+def project(d: str) -> str:
+    """Каталог стенограмм → проект: сессии рабочих деревьев — к своему проекту."""
+    return os.path.basename(d).split("--claude-worktrees-")[0].replace("-home-rustam-develop-simbioz-team-", "")
+
+
+def repo_of(d: str) -> str | None:
+    for f in glob.glob(d + "/*.jsonl"):
+        for line in open(f, errors="replace"):
+            m = re.search(r'"cwd":"([^"]+)"', line)
+            if not m:
+                continue
+            try:
+                g = subprocess.run(["git", "-C", m.group(1), "rev-parse", "--path-format=absolute",
+                                    "--git-common-dir"], capture_output=True, text=True, timeout=5).stdout.strip()
+            except Exception:
+                g = ""
+            if g:
+                return os.path.dirname(g)
+            break
+    return None
+
+
+def done_tasks(top: str, start: datetime, end: datetime, how: str | None = None) -> tuple[int, str]:
+    """Сколько задач сделано в [start, end) и по какому следу.
+
+    След выбирается один на проект для обоих окон (`how`), иначе до и после
+    несравнимы: у наставника tasks.md есть, но задачи ведутся слияниями.
+    """
+    if how is None:
+        a, _ = done_tasks(top, start, end, "tasks.md")
+        b, _ = done_tasks(top, start, end, "слияния")
+        how = "tasks.md" if a >= b else "слияния"
+    def git(*a):
+        try:
+            return subprocess.run(["git", "-C", top, *a], capture_output=True, text=True, timeout=120).stdout
+        except Exception:
+            return ""
+    if how == "tasks.md":
+        first: dict[str, datetime] = {}
+        t = path = None
+        for line in git("log", "--all", "--format=@@%cI", "-p", "--", "specs/*/tasks.md").splitlines():
+            if line.startswith("@@") and not line.startswith("@@ "):
+                t = ts(line[2:])
+            elif line.startswith("+++ b/"):
+                path = line[6:]
+            else:
+                m = re.match(r"^\+\s*[-*] \[[xX]\]\s*(\S+)", line)
+                if m and t:
+                    k = f"{path}:{m.group(1)}"
+                    first[k] = min(first.get(k, t), t)
+        return sum(1 for v in first.values() if start <= v < end), "tasks.md"
+    n = 0
+    for line in git("log", "--all", "--merges", "--format=%cI %s").splitlines():
+        when, _, subj = line.partition(" ")
+        if not subj.startswith("Merge ") or re.search(r"branch '(main|master)'|origin/|remote-tracking", subj):
+            continue
+        if start <= ts(when) < end:
+            n += 1
+    return n, "слияния"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", required=True)
@@ -77,7 +152,14 @@ def main() -> None:
     def window(t):
         return "после" if t >= since else ("до" if t >= base_from else None)
 
+    spent = {w: defaultdict(float) for w in W}  # проект → $
+    repos: dict[str, str | None] = {}
     for d in glob.glob(ROOT + "/-home-rustam-develop-simbioz-team-*"):
+        # Ключ — репозиторий: каталоги стенограмм рабочих деревьев одного проекта
+        # сходятся в один, иначе его задачи посчитались бы дважды.
+        top = repo_of(d)
+        pr = os.path.basename(top) if top else project(d)
+        repos.setdefault(pr, top)
         for f in glob.glob(d + "/*.jsonl"):
             if os.path.getmtime(f) < base_from.timestamp():
                 continue
@@ -87,6 +169,7 @@ def main() -> None:
                     continue
                 c, over, out = cost(mo, u)
                 W[w]["коорд $"] += c
+                spent[w][pr] += c
                 W[w]["коорд вывод"] += out
                 W[w]["коорд запросов"] += 1
                 buckets[w].add(int(t.timestamp() // 600))
@@ -112,6 +195,7 @@ def main() -> None:
                 models[fam(mo)] += c
                 buckets[w].add(int(t.timestamp() // 600))
             W[w]["суб $"] += total
+            spent[w][pr] += total
             W[w]["суб перезапись кэша $"] += over_sum
             for k, v in models.items():
                 W[w][f"суб {k} $"] += v
@@ -151,6 +235,33 @@ def main() -> None:
         print("\nпосле, по ролям:")
         for typ, (k, c) in sorted(by.items(), key=lambda x: -x[1][1]):
             print(f"  {typ:32} {k:3} запусков  ${c:7.2f}")
+
+
+    ends = {"до": (base_from, since), "после": (since, now)}
+    lines = []
+    tot = {w: [0.0, 0] for w in W}
+    for pr in sorted(set(spent["до"]) | set(spent["после"]), key=lambda p: -spent["после"].get(p, 0)):
+        top = repos.get(pr)
+        if not top:
+            continue
+        cells = []
+        _, src = done_tasks(top, base_from, now)
+        for w in W:
+            n, _ = done_tasks(top, *ends[w], src)
+            c = spent[w].get(pr, 0.0)
+            if n:
+                tot[w][0] += c
+                tot[w][1] += n
+            cells.append(f"{n:3} за ${c:7.0f} → " + (f"${c / n:6.1f}" if n else "     —"))
+        if any(spent[w].get(pr, 0) > 1 for w in W):
+            lines.append(f"  {pr:22} {cells[0]}   {cells[1]}   ({src})")
+    if lines:
+        print("\nцена сделанной задачи (задач · расход проекта → $ на задачу):")
+        print(f"  {'':22} {'до':^27}   {'после':^27}")
+        print("\n".join(lines))
+        print("  " + f"{'всего, где задачи есть':22} "
+              + "   ".join(f"{tot[w][1]:3} за ${tot[w][0]:7.0f} → "
+                           + (f"${tot[w][0] / tot[w][1]:6.1f}" if tot[w][1] else "     —") for w in W))
 
 
 if __name__ == "__main__":
