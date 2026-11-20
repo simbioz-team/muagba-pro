@@ -1199,6 +1199,7 @@ cat > "$LA/t.jsonl" <<'JL'
 {"type":"user","timestamp":"2026-09-30T10:00:00Z","message":{"role":"user","content":"задача"}}
 {"type":"assistant","timestamp":"2026-09-30T10:00:05Z","requestId":"r1","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"output_tokens":50}}}
 {"type":"assistant","timestamp":"2026-09-30T10:00:06Z","requestId":"r1","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"output_tokens":50}}}
+{"type":"system","subtype":"compact_boundary","timestamp":"2026-09-30T10:06:00Z","compactMetadata":{"trigger":"auto","preTokens":1200}}
 {"type":"assistant","timestamp":"2026-09-30T10:07:00Z","requestId":"r2","effort":"medium","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":3000,"cache_creation_input_tokens":0,"output_tokens":70}}}
 JL
 la() {  # <событие> [лишние поля] → запуск хука
@@ -1216,6 +1217,8 @@ assert r.get("description") == "fix/причина: гонка в форме", r
 assert (r["model"], r["effort"], r["requests"]) == ("claude-sonnet-5-5", "medium", 2), r
 assert (r["tok_in"], r["tok_cache_read"], r["tok_cache_write"], r["tok_out"]) == (15, 4000, 200, 120), r
 assert r["first_ts"] == "2026-09-30T10:00:00Z" and r["last_ts"] == "2026-09-30T10:07:00Z", r
+# Размер задачи: одно уплотнение, наибольший контекст запроса — r2, 3005.
+assert (r["compactions"], r["ctx_max"]) == (1, 3005), r
 PY
 # Без стенограммы и на SubagentStart — запись о запуске всё равно есть, без сводки.
 la SubagentStop ",\"agent_transcript_path\":\"$LA/нет.jsonl\""
