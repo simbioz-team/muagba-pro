@@ -89,7 +89,7 @@ EVENT=$(jq_get hook_event_name)
 [ "$EVENT" = "Stop" ] && log_event turn
 if [ "$EVENT" = "SubagentStop" ]; then
   case "$(jq_get agent_type)" in
-    implementer|*:implementer) ;;
+    implementer|*:implementer|implementer-deep|*:implementer-deep) ;;
     # Служебные вызовы Claude Code — без роли, кода не сдают.
     '') exit 0 ;;
     # Роль проекта: держим, если она сдаёт код — см. gate_scope.py.

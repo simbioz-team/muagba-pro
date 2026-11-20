@@ -709,6 +709,9 @@ gate Stop '' 'Сделал схему. Какой тип взять для id �
   || fail "gate-check: исполнитель ушёл с красной проверкой" ""
 [ "$(gate SubagentStop implementer 'Готово.' | cut -d'|' -f1)" = "2" ] \
   || fail "gate-check: проектный implementer не держится гейтом" ""
+# implementer-deep — тот же исполнитель на другой модели (ADR-0020).
+[ "$(gate SubagentStop muagba-base:implementer-deep 'Готово.' | cut -d'|' -f1)" = "2" ] \
+  || fail "gate-check: implementer-deep ушёл с красной проверкой" ""
 [ "$(gate SubagentStop muagba-base:reviewer 'Нельзя сливать.' | cut -d'|' -f1)" = "0" ] \
   || fail "gate-check: проверяющего держит гейт кода" ""
 # Служебные вызовы Claude Code приходят с пустым agent_type — у narta это 151
@@ -2245,6 +2248,27 @@ rm "$WI/.worktreeinclude"; rm "$WI/.claude/worktrees/t1/.env"
 [ -z "$(whook "git worktree add x")" ] && [ ! -e "$WI/.claude/worktrees/t1/.env" ] \
   || fail "worktree_include: без .worktreeinclude не no-op" ""
 rm -rf "$WI"
+
+# --- роли: модель и effort задаёт роль (ADR-0020) ----------------------------
+# Без model роль наследует модель сессии — у владельца это Opus на xhigh, и
+# весь выбор по шагу молча пропадает: так было с 99% запусков до 0.23.0.
+python3 "$SCRIPTS/role_variants.py" --check >/dev/null 2>&1 \
+  || fail "role_variants: вариант роли разошёлся с исходником" "$(python3 "$SCRIPTS/role_variants.py" --check)"
+for R in "$SCRIPTS"/../agents/*.md; do
+  FM=$(sed -n '2,/^---$/p' "$R")
+  printf '%s\n' "$FM" | grep -q '^model: ' || fail "роль $(basename "$R") без model" ""
+  printf '%s\n' "$FM" | grep -q '^effort: ' || fail "роль $(basename "$R") без effort" ""
+done
+# Проверяющие роли ничего не правят: ни списком tools, ни через запрет.
+for R in reviewer researcher acceptance; do
+  FM=$(sed -n '2,/^---$/p' "$SCRIPTS/../agents/$R.md")
+  if printf '%s\n' "$FM" | grep -q '^tools: '; then
+    printf '%s\n' "$FM" | grep '^tools: ' | grep -qE 'Edit|Write' && fail "роль $R умеет править" ""
+  else
+    printf '%s\n' "$FM" | grep -E '^disallowedTools: .*Write.*Edit|^disallowedTools: .*Edit.*Write' >/dev/null \
+      || fail "роль $R без tools и без запрета правки" ""
+  fi
+done
 
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \

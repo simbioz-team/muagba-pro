@@ -3,6 +3,7 @@ name: reviewer
 description: Проверяет готовый дифф свежим взглядом против плана и критериев готовности. Вызывать после реализации, до коммита. Ничего не правит.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: medium
 color: purple
 ---
 
