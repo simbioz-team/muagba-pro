@@ -21,13 +21,18 @@ const NARTA: Record<string, Record<string, string>> = {
   'T-1': { key: 'T-1', title: 'сделанная', status_category: 'done' },
   'T-2': { key: 'T-2', title: 'идёт', status_category: 'in_progress' },
   'T-3': { key: 'T-3', title: 'ждёт', status_category: 'new' },
+  'T-4': { key: 'T-4', title: 'проверяют', status_category: 'review' },
 }
 let writes: Array<{ path: string; text: string }> = []
+let runs: string[][] = []
+let toasts: string[] = []
 let calls: string[] = []
 
 function engine(on: any, store: Record<string, unknown>, opened: string[], closed: string[], stdout = JSON.stringify(VIEW), keys = '{"server":"","keys":[]}') {
   writes = []
   calls = []
+  runs = []
+  toasts = []
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('store.get', (_: unknown, e: { key: string }) => ({ value: store[e.key] }))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { store[e.key] = e.value; return { value: undefined } })
@@ -37,9 +42,14 @@ function engine(on: any, store: Record<string, unknown>, opened: string[], close
   on('session.cwd', () => ({ value: '/p' }))
   on('session.root', () => ({ value: '/p' }))
   on('session.id', () => ({ value: 's1' }))
-  on('process.run', (_: unknown, e: { argv: string[] }) => ({
-    value: { exitCode: 0, stdout: e.argv.includes('--narta-keys') ? keys : stdout, stderr: '' },
-  }))
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    runs.push(e.argv)
+    const sync = e.argv.some(a => a.endsWith('template_sync.py'))
+    const out = sync ? JSON.stringify({ systemMessage: 'muagba-base обновила файлы базы' })
+      : e.argv.includes('--narta-keys') ? keys : stdout
+    return { value: { exitCode: 0, stdout: out, stderr: '' } }
+  })
+  on('ui.toast', (_: unknown, e: { text: string }) => { toasts.push(e.text); return { value: undefined } })
   on('session.info', () => ({ value: { transcriptPath: '/p/t.jsonl' } }))
   on('clock.now', () => ({ value: Date.now() }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => { writes.push(e); return { value: undefined } })
@@ -113,14 +123,14 @@ test('ветка без номера спеки: панель говорит э�
 })
 
 test('задачи Narta сессии: статусы спрашиваются у Narta, итог пишется для строки состояния', async ($, on) => {
-  engine(on, {}, [], [], JSON.stringify(VIEW), JSON.stringify({ server: 'narta', keys: ['T-1', 'T-2', 'T-3'] }))
+  engine(on, {}, [], [], JSON.stringify(VIEW), JSON.stringify({ server: 'narta', keys: ['T-1', 'T-2', 'T-3', 'T-4'] }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'progress', args: 'on' })
-  expect(calls).toEqual(['narta/search_tasks/T-1', 'narta/search_tasks/T-2', 'narta/search_tasks/T-3'])
+  expect(calls).toEqual(['narta/search_tasks/T-1', 'narta/search_tasks/T-2', 'narta/search_tasks/T-3', 'narta/search_tasks/T-4'])
   const w = writes.at(-1)
   expect(w?.path).toBe('/p/.claude/logs/progress/s1.json')
   const sum = JSON.parse(w?.text ?? '{}')
-  expect([sum.done, sum.busy, sum.left]).toEqual([1, 1, 1])
+  expect([sum.done, sum.busy, sum.review, sum.left]).toEqual([1, 1, 1, 1])
 })
 
 test('сессия без Narta к Narta не ходит и ничего не пишет', async ($, on) => {
@@ -132,8 +142,9 @@ test('сессия без Narta к Narta не ходит и ничего не п
 })
 
 test('панель показывает задачи Narta, когда ветка не называет спеку', async ($, on) => {
-  const v = { spec: null, branch: 'feature/x', busy: 1, agents: [], narta: { done: 1, busy: 1, left: 1, tasks: [
-    { key: 'T-1', title: 'сделанная', cat: 'done' }, { key: 'T-2', title: 'идёт', cat: 'in_progress' }, { key: 'T-3', title: 'ждёт', cat: 'new' }] } }
+  const v = { spec: null, branch: 'feature/x', busy: 1, agents: [], narta: { done: 1, busy: 1, review: 1, left: 1, tasks: [
+    { key: 'T-1', title: 'сделанная', cat: 'done' }, { key: 'T-2', title: 'идёт', cat: 'in_progress' }, { key: 'T-3', title: 'ждёт', cat: 'new' },
+    { key: 'T-4', title: 'проверяют', cat: 'review' }] } }
   engine(on, {}, [], [], JSON.stringify(v))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'progress', args: 'on' })
@@ -141,6 +152,17 @@ test('панель показывает задачи Narta, когда ветк�
   expect(await ui.find({ type: 'Text', text: /Задачи сессии в Narta/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /T-2 идёт/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /T-3 ждёт/ })).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /T-4 проверяют/ }))?.text).toMatch(/◐/)
+  expect(await ui.find({ type: 'Text', text: /На проверке:/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /T-1 сделанная/ })).toBeFalsy()
   await ui.unmount()
+})
+
+test('файлы базы: модуль зовёт синхронизацию на старте — и после перезагрузки плагина', async ($, on) => {
+  engine(on, {}, [], [])
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await new Promise(r => setTimeout(r, 0))
+  const sync = runs.filter(a => a.some(x => x.endsWith('template_sync.py')))
+  expect(sync.length).toBe(1)
+  expect(toasts).toEqual(['muagba-base обновила файлы базы'])
 })

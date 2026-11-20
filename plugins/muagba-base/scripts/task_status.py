@@ -32,7 +32,8 @@
 - статусы спрашивает мод `hooks/tasks.tsx` — у Narta через подключение самой
   сессии, без своих ключей, — и пишет итог в
   `.claude/logs/progress/<сессия>.json`;
-- строка состояния читает этот итог, если он свежий: `N ✓12 ⏵2 ○5`.
+- строка состояния читает этот итог, если он свежий: `N ✓12 ⏵2 ◐3 ○5` —
+  сделано, в работе, на проверке (`review`, если есть), осталось.
 
 Сессия без инструментов Narta ничего этого не делает.
 
@@ -236,7 +237,9 @@ def main() -> int:
                 print(json.dumps({"spec": None, "branch": branch, "narta": n,
                                   "busy": n.get("busy", 0), "agents": []}, ensure_ascii=False))
             else:
-                print(f"N ✓{n.get('done', 0)} ⏵{n.get('busy', 0)} ○{n.get('left', 0)}")
+                rv = n.get("review", 0)
+                print(f"N ✓{n.get('done', 0)} ⏵{n.get('busy', 0)}" + (f" ◐{rv}" if rv else "")
+                      + f" ○{n.get('left', 0)}")
             return 0
     if not has_specs:
         if as_json:

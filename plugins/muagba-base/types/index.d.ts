@@ -3,7 +3,15 @@ export type TaskAgent = { agent_id: string; type: string; minutes: number }
 /** Задача трекера (Narta): номер, название, категория статуса. */
 export type NartaTask = { key: string; title: string; cat: string }
 /** Итог по задачам Narta этой сессии; мод пишет его в .claude/logs/progress/<сессия>.json. */
-export type NartaSummary = { done: number; busy: number; left: number; tasks: NartaTask[] }
+export type NartaSummary = {
+  done: number
+  /** in_progress */
+  busy: number
+  /** review: сделано, ждёт проверки; в файлах до 0.23.9 поля нет */
+  review?: number
+  left: number
+  tasks: NartaTask[]
+}
 /** Ветка не называет спеку: задачи Narta сессии, если есть, и её исполнители. */
 export type TaskViewNoSpec = {
   spec: null
@@ -26,6 +34,8 @@ export type TaskView = TaskViewSpec | TaskViewNoSpec
 
 declare module 'claude-code' {
   interface PluginState {
-    'muagba-base': { tasks: Shaped<TaskView | null> }
+    'muagba-base': {
+      tasks: Shaped<TaskView | null>
+    }
   }
 }

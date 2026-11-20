@@ -1606,6 +1606,15 @@ ts --force >/dev/null; grep -q 'Правила базы (старое)' "$TS/AGE
 # Ночной режим настроен — лаунчер появляется и исполняемый.
 mkdir -p "$TS/.claude/night"; echo '{}' > "$TS/.claude/night/settings.json"; ts --force >/dev/null
 [ -x "$TS/.claude/claude-night" ] || fail "template_sync: лаунчер не создан в проекте с ночным режимом" ""
+# Двое разом (хук SessionStart и модуль tasks.tsx): блокировка, отчёт один, блок один.
+TS2=$(mktemp -d); mkdir -p "$TS2/.claude"; git -C "$TS2" init -q; printf '# Проект\n' > "$TS2/AGENTS.md"
+ts2() { printf '{"cwd":"%s"}' "$TS2" | python3 "$SCRIPTS/template_sync.py"; }
+ts2 > "$TS2/o1" & ts2 > "$TS2/o2" & wait
+[ "$(cat "$TS2/o1" "$TS2/o2" | grep -c 'обновила файлы базы' || true)" = 1 ] \
+  || fail "template_sync: два одновременных запуска — не один отчёт" "$(cat "$TS2/o1" "$TS2/o2")"
+[ "$(grep -c 'muagba:begin base-rules' "$TS2/AGENTS.md")" = 1 ] || fail "template_sync: блок записан дважды" ""
+git -C "$TS2" status --porcelain | grep -q lock && fail "template_sync: файл блокировки в проекте" ""
+rm -rf "$TS2"
 # Репозиторий самой базы не синхронизируется.
 [ -z "$(printf '{"cwd":"%s"}' "$REPO" | python3 "$SCRIPTS/template_sync.py" --force)" ] || fail "template_sync: тронул репозиторий базы" ""
 rm -rf "$TS"
@@ -2332,6 +2341,9 @@ mkdir -p "$TN/.claude/logs/progress"
 printf '{"done":3,"busy":1,"left":2,"tasks":[]}' > "$TN/.claude/logs/progress/s9.json"
 OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py")
 [ "$OUT" = "N ✓3 ⏵1 ○2" ] || fail "task_status: без спеки в ветке — итог Narta сессии" "$OUT"
+printf '{"done":3,"busy":1,"review":4,"left":2,"tasks":[]}' > "$TN/.claude/logs/progress/s9.json"
+OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "N ✓3 ⏵1 ◐4 ○2" ] || fail "task_status: на проверке — отдельно от «в работе»" "$OUT"
 OUT=$(printf '{"session_id":"s8","cwd":"%s"}' "$TN" | python3 "$SCRIPTS/task_status.py")
 [ -z "$OUT" ] || fail "task_status: итог Narta чужой сессии не показывается" "$OUT"
 touch -d '1 hour ago' "$TN/.claude/logs/progress/s9.json"

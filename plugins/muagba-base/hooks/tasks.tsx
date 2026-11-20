@@ -13,6 +13,24 @@ const KEY = 'tasks-pane'
 const EVERY_MS = 15_000
 // Тег меняется, когда меняются поля TaskView: старое значение переживает перезагрузку.
 const view = atom({ plugin: 'muagba-base', key: 'tasks' } as const, null, { shape: 'tasks-2' })
+// Файлы базы в проекте (блок правил AGENTS.md и др.) обновляет template_sync.py.
+// Хук SessionStart зовёт его только на старте сессии; после /plugin update и
+// /reload-plugins он не срабатывает, и новые правила ждали перезапуска. Модуль
+// перезагружается вместе с плагином — зовём то же отсюда на каждом его старте.
+// На старте сессии зовут оба: скрипт берёт блокировку, второй молчит.
+async function syncBase($: EngineInterface, cwd: string) {
+  const run = await $.process.run(['python3', `${$.plugin.root}/scripts/template_sync.py`], {
+    stdin: JSON.stringify({ cwd }),
+    timeoutMs: 30_000,
+  })
+  if (run.exitCode !== 0 || !run.stdout.trim()) return
+  try {
+    const msg = JSON.parse(run.stdout).systemMessage
+    if (msg) $.ui.toast(msg)
+  } catch {
+    // вывод не JSON — молчим, как молчит хук
+  }
+}
 
 // Задачи Narta этой сессии: номер → последний известный статус. Закрытые не
 // переспрашиваем — они не возвращаются. Модуль перезагрузился — спросим заново.
@@ -27,7 +45,8 @@ function summarize(): NartaSummary {
   const n = (cats: string[]) => tasks.filter(t => cats.includes(t.cat)).length
   return {
     done: n(['done']),
-    busy: n(['in_progress', 'review']),
+    busy: n(['in_progress']),
+    review: n(['review']),
     left: tasks.filter(t => !FINAL.has(t.cat) && !['in_progress', 'review'].includes(t.cat)).length,
     tasks,
   }
@@ -129,6 +148,7 @@ export const register: Register = on => {
     // Исполнители стартуют и кончаются между ответами: без таймера счёт «в работе» отстаёт.
     $.clock.every(EVERY_MS, () => void refresh($))
     void refreshNarta($, true)
+    void syncBase($, e.cwd)
     return next(e)
   })
 
@@ -174,21 +194,28 @@ export const register: Register = on => {
     }
     if (v.spec === null && v.narta) {
       const n = v.narta
-      const busy = n.tasks.filter(t => t.cat === 'in_progress' || t.cat === 'review')
+      const busy = n.tasks.filter(t => t.cat === 'in_progress')
+      const review = n.tasks.filter(t => t.cat === 'review')
       const left = n.tasks.filter(t => t.cat === 'new' || t.cat === 'triage' || t.cat === '')
-      const room = Math.max(3, (e.viewport?.rows ?? 24) - 6 - busy.length)
+      const room = Math.max(3, (e.viewport?.rows ?? 24) - 8 - busy.length - review.length)
       return (
         <Box flexDirection="column">
           <Text bold>Задачи сессии в Narta</Text>
           <Text>
             <Text color="green">✓ {n.done}</Text> сделано · <Text color="yellow">⏵ {n.busy}</Text> в
-            работе · <Text color="cyan">○ {n.left}</Text> осталось
+            работе · <Text color="magenta">◐ {n.review ?? 0}</Text> на проверке ·{' '}
+            <Text color="cyan">○ {n.left}</Text> осталось
           </Text>
           {busy.length > 0 && <Text dimColor>В работе:</Text>}
           {busy.map(t => (
             <Text wrap="truncate-end">
               {'  '}⏵ {t.key} {t.title}
-              {t.cat === 'review' ? ' (проверка)' : ''}
+            </Text>
+          ))}
+          {review.length > 0 && <Text dimColor>На проверке:</Text>}
+          {review.map(t => (
+            <Text wrap="truncate-end">
+              {'  '}◐ {t.key} {t.title}
             </Text>
           ))}
           {left.length > 0 && <Text dimColor>Осталось:</Text>}

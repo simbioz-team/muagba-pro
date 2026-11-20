@@ -223,7 +223,16 @@ def main() -> int:
         print(json.dumps({"systemMessage": msg, "hookSpecificOutput": {
             "hookEventName": "SessionStart", "additionalContext": msg}}, ensure_ascii=False))
         return 0
-    updated, conflicts = sync(root, version, force="--force" in args)
+    # Зовут двое: хук SessionStart и модуль tasks.tsx (он же — после
+    # /reload-plugins, где хук молчит). Второй ждёт первого и видит, что версия
+    # уже записана.
+    # Блокировка — во временном каталоге: в .claude/ она всплыла бы в git status.
+    import fcntl
+    import tempfile
+    lock_path = Path(tempfile.gettempdir()) / f"muagba-sync-{sha(str(root).encode())[:16]}.lock"
+    with open(lock_path, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        updated, conflicts = sync(root, version, force="--force" in args)
     if not updated and not conflicts:
         return 0
     lines = [f"muagba-base {version} обновила файлы базы в проекте:"] + [f"- {u}" for u in updated]
