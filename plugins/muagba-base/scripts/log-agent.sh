@@ -4,7 +4,8 @@
 # Пишет JSONL и ничего не возвращает в контекст (стоимость контекста — ноль).
 # На SubagentStop добавляет сводку стенограммы сабагента — модель, effort,
 # токены, время (agent_usage.py): по ним выбирают модель под класс задачи, а
-# сами стенограммы Claude Code удаляет через 30 дней.
+# сами стенограммы Claude Code удаляет через 30 дней. И описание запуска
+# из .meta.json: в нём вид работы и шаг (ADR-0020).
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 read_hook_input
@@ -33,6 +34,16 @@ if d.get("hook_event_name") == "SubagentStop" and d.get("agent_transcript_path")
         rec.update(summarize(d["agent_transcript_path"]))
     except Exception:
         pass  # журнал важнее сводки: запись о запуске пишется всегда
+    # Описание запуска несёт вид работы и шаг («fix/причина: …») — по ним
+    # отчёт сверяет выбор роли с итогом задачи (ADR-0020). Claude Code держит
+    # его в .meta.json рядом со стенограммой и удаляет вместе с ней.
+    try:
+        meta = d["agent_transcript_path"][:-len(".jsonl")] + ".meta.json"
+        desc = (json.load(open(meta, encoding="utf-8")).get("description") or "").strip()
+        if desc:
+            rec["description"] = desc[:200]
+    except Exception:
+        pass
 print(json.dumps(rec, ensure_ascii=False))
 ' "$(dirname "${BASH_SOURCE[0]}")" >> "$LOG_DIR/agents.jsonl" 2>/dev/null
 exit 0

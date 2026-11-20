@@ -1205,10 +1205,13 @@ la() {  # <событие> [лишние поля] → запуск хука
   printf '{"hook_event_name":"%s","agent_id":"a1","agent_type":"muagba-base:implementer","session_id":"s","cwd":"%s"%s}' \
     "$1" "$LA/p" "${2:-}" | CLAUDE_PROJECT_DIR="$LA/p" bash "$SCRIPTS/log-agent.sh"
 }
+printf '{"agentType":"muagba-base:implementer","description":"fix/причина: гонка в форме"}' > "$LA/t.meta.json"
 la SubagentStop ",\"agent_transcript_path\":\"$LA/t.jsonl\""
 python3 - "$LA/p/.claude/logs/agents.jsonl" <<'PY' || fail "log-agent: сводка стенограммы неверна" "$(cat "$LA/p/.claude/logs/agents.jsonl")"
 import json, sys
 r = json.loads(open(sys.argv[1]).read().splitlines()[-1])
+# Описание запуска — из .meta.json: в нём вид работы и шаг (ADR-0020).
+assert r.get("description") == "fix/причина: гонка в форме", r
 # r1 записан дважды — один запрос; токены не удвоены
 assert (r["model"], r["effort"], r["requests"]) == ("claude-sonnet-5-5", "medium", 2), r
 assert (r["tok_in"], r["tok_cache_read"], r["tok_cache_write"], r["tok_out"]) == (15, 4000, 200, 120), r
@@ -1221,6 +1224,7 @@ python3 - "$LA/p/.claude/logs/agents.jsonl" <<'PY' || fail "log-agent: без с
 import json, sys
 rs = [json.loads(l) for l in open(sys.argv[1])]
 assert len(rs) == 3 and "model" not in rs[1] and "model" not in rs[2], rs
+assert "description" not in rs[1] and "description" not in rs[2], rs
 PY
 rm -rf "$LA"
 
