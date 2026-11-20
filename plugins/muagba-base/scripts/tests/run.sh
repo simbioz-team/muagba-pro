@@ -2277,6 +2277,35 @@ for R in reviewer researcher acceptance; do
   fi
 done
 
+# --- task_status: счётчик задач для строки состояния --------------------------
+TS="$(mktemp -d)"
+git -C "$TS" init -q -b 033-feature 2>/dev/null
+mkdir -p "$TS/specs/032-old" "$TS/specs/033-feature" "$TS/.claude/logs"
+printf -- '- [ ] T1 a\n' > "$TS/specs/032-old/tasks.md"
+printf -- '- [x] T1 a\n- [X] T2 b\n- [ ] T3 c\n- [ ] T4 d\n  - [ ] T5 e\n' > "$TS/specs/033-feature/tasks.md"
+NOW=$(date +%FT%T)
+{
+  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a1","agent_type":"muagba-base:implementer"}\n' "$NOW"
+  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a2","agent_type":"muagba-base:implementer-deep"}\n' "$NOW"
+  printf '{"ts":"%s","event":"SubagentStop","agent_id":"a2","agent_type":""}\n' "$NOW"
+  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a3","agent_type":"muagba-base:reviewer"}\n' "$NOW"
+  printf '{"ts":"2020-01-01T00:00:00","event":"SubagentStart","agent_id":"a4","agent_type":"muagba-base:implementer"}\n'
+} > "$TS/.claude/logs/agents.jsonl"
+OUT=$(printf '{"workspace":{"current_dir":"%s","project_dir":"%s"}}' "$TS" "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "033 ✓2 ⏵1 ○2" ] || fail "task_status: спека по ветке, исполнитель в работе, старый и остановленный не в счёт" "$OUT"
+git -C "$TS" checkout -q -b main 2>/dev/null
+OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "033 ✓2 ⏵1 ○2" ] || fail "task_status: без номера в ветке — последняя спека с открытыми" "$OUT"
+printf -- '- [x] T1\n' > "$TS/specs/033-feature/tasks.md"
+OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "032 ✓0 ⏵1 ○0" ] || fail "task_status: закрытая спека пропускается, в работе не больше открытых" "$OUT"
+rm -rf "$TS/specs"
+OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ -z "$OUT" ] || fail "task_status: без specs/*/tasks.md — пустой вывод" "$OUT"
+OUT=$(printf 'не json' | python3 "$SCRIPTS/task_status.py"; echo "rc=$?")
+[ "$OUT" = "rc=0" ] || fail "task_status: битый вход — пусто и код 0" "$OUT"
+rm -rf "$TS"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"
