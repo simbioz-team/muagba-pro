@@ -1,7 +1,7 @@
 {
   "name": "muagba-base",
   "displayName": "MUAGBA Base",
-  "version": "0.23.12",
+  "version": "0.23.13",
   "dependencies": [
     {
       "name": "docsys",
