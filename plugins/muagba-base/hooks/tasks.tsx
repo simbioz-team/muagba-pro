@@ -26,9 +26,25 @@ async function syncBase($: EngineInterface, cwd: string) {
   if (run.exitCode !== 0 || !run.stdout.trim()) return
   try {
     const msg = JSON.parse(run.stdout).systemMessage
-    if (msg) $.ui.toast(msg)
+    if (!msg) return
+    $.ui.toast(msg)
+    // Файлы обновлены на диске, а AGENTS.md и CLAUDE.md сессия прочла при
+    // старте и держит в контексте. Без напоминания она работает по старому
+    // тексту: у наставника блок 0.23.10 лёг в 17:13, а координаторы и дальше
+    // слали implementer-deep по правилу, которого в файле уже не было.
+    await $.session.append({
+      message: {
+        type: 'user',
+        content: [{
+          type: 'text',
+          text: `${msg}\n\nЭти файлы ты прочёл в начале сессии, и в контексте у тебя прежний текст. ` +
+            'Перечитай сейчас обновлённые — в AGENTS.md и CLAUDE.md раздел «Правила базы» между ' +
+            'метками muagba:begin/end — и дальше действуй по новой версии.',
+        }],
+      },
+    })
   } catch {
-    // вывод не JSON — молчим, как молчит хук
+    // вывод не JSON или напоминание отклонено — молчим, как молчит хук
   }
 }
 

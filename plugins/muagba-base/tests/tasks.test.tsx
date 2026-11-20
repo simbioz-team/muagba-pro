@@ -26,6 +26,7 @@ const NARTA: Record<string, Record<string, string>> = {
 let writes: Array<{ path: string; text: string }> = []
 let runs: string[][] = []
 let toasts: string[] = []
+let appended: string[] = []
 let calls: string[] = []
 
 function engine(on: any, store: Record<string, unknown>, opened: string[], closed: string[], stdout = JSON.stringify(VIEW), keys = '{"server":"","keys":[]}') {
@@ -33,6 +34,7 @@ function engine(on: any, store: Record<string, unknown>, opened: string[], close
   calls = []
   runs = []
   toasts = []
+  appended = []
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('store.get', (_: unknown, e: { key: string }) => ({ value: store[e.key] }))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { store[e.key] = e.value; return { value: undefined } })
@@ -48,6 +50,11 @@ function engine(on: any, store: Record<string, unknown>, opened: string[], close
     const out = sync ? JSON.stringify({ systemMessage: 'muagba-base обновила файлы базы' })
       : e.argv.includes('--narta-keys') ? keys : stdout
     return { value: { exitCode: 0, stdout: out, stderr: '' } }
+  })
+  on('session.append', (_: unknown, e: any, next: (e: any) => unknown) => {
+    const text = e?.message?.content?.[0]?.text
+    if (typeof text === 'string' && text.includes('Перечитай')) appended.push(text)
+    return next(e)
   })
   on('ui.toast', (_: unknown, e: { text: string }) => { toasts.push(e.text); return { value: undefined } })
   on('session.info', () => ({ value: { transcriptPath: '/p/t.jsonl' } }))
@@ -165,4 +172,7 @@ test('файлы базы: модуль зовёт синхронизацию н
   const sync = runs.filter(a => a.some(x => x.endsWith('template_sync.py')))
   expect(sync.length).toBe(1)
   expect(toasts).toEqual(['muagba-base обновила файлы базы'])
+  // модели — напоминание перечитать: файлы в контексте прочитаны при старте
+  expect(appended.length).toBe(1)
+  expect(appended[0]).toMatch(/Перечитай/)
 })
