@@ -12,11 +12,13 @@
 подробно, для панели мода `tasks`: открытые задачи и исполнители в работе: как любой хук базы,
 без своего файла скрипт ничего не делает.
 
-- **спека** — по ветке (`033-…`, `033/…`), иначе последняя с открытыми
-  задачами;
+- **спека** — по ветке (`033-…`, `033/…`). Нет номера в ветке — спеки нет,
+  выводится только «в работе»: угадывать нельзя. Две сессии на одной ветке
+  без номера получали одну «последнюю открытую» спеку, которую не вела ни
+  одна из них (наставник, 20.11);
 - **сделано** — строки `- [x]` в её tasks.md;
-- **в работе** — исполнители, запущенные и не остановленные, по журналу
-  агентов `.claude/logs/agents.jsonl` (log-agent.sh). Без сети: строка
+- **в работе** — исполнители **этой сессии** (`session_id` входа),
+  запущенные и не остановленные, по журналу агентов `.claude/logs/agents.jsonl` (log-agent.sh). Без сети: строка
   обновляется часто, и запрос к трекеру её бы тормозил;
 - **осталось** — открытые `- [ ]` за вычетом тех, что в работе.
 
@@ -41,14 +43,14 @@ STALE = timedelta(hours=6)  # оборванный исполнитель не �
 
 
 def git_top_and_branch(cwd: str) -> tuple[Path, str]:
-    try:
-        out = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=2,
-        ).stdout.split("\n")
-        return Path(out[0]), out[1]
-    except Exception:
-        return Path(cwd), ""
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                                  text=True, timeout=2).stdout.strip()
+        except Exception:
+            return ""
+    # symbolic-ref, а не rev-parse --abbrev-ref: у ветки без коммитов второй даёт «HEAD».
+    return Path(git("rev-parse", "--show-toplevel") or cwd), git("symbolic-ref", "--short", "-q", "HEAD")
 
 
 def count(tasks: Path) -> tuple[int, int]:
@@ -66,9 +68,6 @@ def pick_spec(top: Path, branch: str):
         for p in specs:
             if p.parent.name.startswith(m.group(1) + "-"):
                 return p
-    for p in reversed(specs):
-        if count(p)[1]:
-            return p
     return None
 
 
@@ -81,7 +80,7 @@ def items(tasks: Path) -> list[dict]:
     return out
 
 
-def running(log: Path, now: datetime) -> list[dict]:
+def running(log: Path, now: datetime, sid: str = "") -> list[dict]:
     try:
         with log.open("rb") as f:
             f.seek(0, 2)
@@ -97,7 +96,7 @@ def running(log: Path, now: datetime) -> list[dict]:
         except Exception:
             continue
         aid = r.get("agent_id")
-        if not aid:
+        if not aid or (sid and r.get("session_id") != sid):
             continue
         if r.get("event") == "SubagentStart" and "implementer" in (r.get("agent_type") or ""):
             live[aid] = (ts, r.get("agent_type") or "")
@@ -115,16 +114,24 @@ def main() -> int:
     ws = d.get("workspace") or {}
     cwd = ws.get("current_dir") or d.get("cwd") or "."
     top, branch = git_top_and_branch(cwd)
-    spec = pick_spec(top, branch)
     as_json = "--json" in sys.argv[1:]
-    if spec is None:
+    if not any((top / "specs").glob("*/tasks.md")):
         if as_json:
             print("null")
         return 0
-    done, open_ = count(spec)
     # Журнал агентов пишет сессия, а не дерево (log-agent.sh, project_dir).
     proj = Path(ws.get("project_dir") or top)
-    agents = running(proj / ".claude" / "logs" / "agents.jsonl", datetime.now())
+    agents = running(proj / ".claude" / "logs" / "agents.jsonl", datetime.now(),
+                     str(d.get("session_id") or ""))
+    spec = pick_spec(top, branch)
+    if spec is None:
+        if as_json:
+            print(json.dumps({"spec": None, "branch": branch, "busy": len(agents),
+                              "agents": agents}, ensure_ascii=False))
+        elif agents:
+            print(f"⏵{len(agents)}")
+        return 0
+    done, open_ = count(spec)
     busy = min(len(agents), open_)
     num = SPEC.match(spec.parent.name).group(1)
     if as_json:

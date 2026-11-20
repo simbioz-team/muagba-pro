@@ -26,6 +26,7 @@ function engine(on: any, store: Record<string, unknown>, opened: string[], close
   on('ui.panes', () => ({ value: opened.filter(id => !closed.includes(id)).map(id => ({ id, title: id })) }))
   on('session.cwd', () => ({ value: '/p' }))
   on('session.root', () => ({ value: '/p' }))
+  on('session.id', () => ({ value: 's1' }))
   on('process.run', () => ({ value: { exitCode: 0, stdout, stderr: '' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('command.run', () => ({ text: '' }))
@@ -76,5 +77,17 @@ test('без tasks.md панель так и говорит', async ($, on) => {
   await $.command.run({ command: 'progress', args: 'on' })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text' }))?.text).toMatch(/нет specs/)
+  await ui.unmount()
+})
+
+test('ветка без номера спеки: панель говорит это и показывает исполнителей сессии', async ($, on) => {
+  const store: Record<string, unknown> = {}
+  const nospec = { spec: null, branch: 'feature/x', busy: 1, agents: [{ agent_id: 'a1', type: 'muagba-base:implementer', minutes: 3 }] }
+  engine(on, store, [], [], JSON.stringify(nospec))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'progress', args: 'on' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /не называет спеку/ }))?.text).toMatch(/feature\/x/)
+  expect(await ui.find({ type: 'Text', text: /implementer · 3 мин/ })).toBeTruthy()
   await ui.unmount()
 })

@@ -12,7 +12,7 @@ const TITLE = 'Задачи'
 const KEY = 'tasks-pane'
 const EVERY_MS = 15_000
 // Тег меняется, когда меняются поля TaskView: старое значение переживает перезагрузку.
-const view = atom({ plugin: 'muagba-base', key: 'tasks' } as const, null, { shape: 'tasks-1' })
+const view = atom({ plugin: 'muagba-base', key: 'tasks' } as const, null, { shape: 'tasks-2' })
 
 // Включена ли панель в этой сессии; после перезагрузки модуля восстанавливается из $.store.
 let enabled = false
@@ -20,6 +20,7 @@ let enabled = false
 async function refresh($: EngineInterface) {
   if (!enabled) return
   const input = JSON.stringify({
+    session_id: await $.session.id(),
     workspace: { current_dir: await $.session.cwd(), project_dir: await $.session.root() },
   })
   try {
@@ -98,6 +99,24 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Text dimColor>В проекте нет specs/*/tasks.md — считать нечего.</Text>
+        </Box>
+      )
+    }
+    if (v.spec === null) {
+      return (
+        <Box flexDirection="column">
+          <Text dimColor wrap="truncate-end">
+            Ветка {v.branch} не называет спеку (033-…) — счёта нет.
+          </Text>
+          <Text>
+            <Text color="yellow">⏵ {v.busy}</Text> исполнителей этой сессии в работе
+          </Text>
+          {v.agents.map(a => (
+            <Text wrap="truncate-end">
+              {'  '}
+              {a.type.replace(/^muagba-base:/, '')} · {a.minutes} мин
+            </Text>
+          ))}
         </Box>
       )
     }

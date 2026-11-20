@@ -2285,20 +2285,22 @@ printf -- '- [ ] T1 a\n' > "$TS/specs/032-old/tasks.md"
 printf -- '- [x] T1 a\n- [X] T2 b\n- [ ] T3 c\n- [ ] T4 d\n  - [ ] T5 e\n' > "$TS/specs/033-feature/tasks.md"
 NOW=$(date +%FT%T)
 {
-  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a1","agent_type":"muagba-base:implementer"}\n' "$NOW"
+  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a1","agent_type":"muagba-base:implementer","session_id":"s1"}\n' "$NOW"
+  printf '{"ts":"%s","event":"SubagentStart","agent_id":"a5","agent_type":"muagba-base:implementer","session_id":"s2"}\n' "$NOW"
   printf '{"ts":"%s","event":"SubagentStart","agent_id":"a2","agent_type":"muagba-base:implementer-deep"}\n' "$NOW"
   printf '{"ts":"%s","event":"SubagentStop","agent_id":"a2","agent_type":""}\n' "$NOW"
   printf '{"ts":"%s","event":"SubagentStart","agent_id":"a3","agent_type":"muagba-base:reviewer"}\n' "$NOW"
   printf '{"ts":"2020-01-01T00:00:00","event":"SubagentStart","agent_id":"a4","agent_type":"muagba-base:implementer"}\n'
 } > "$TS/.claude/logs/agents.jsonl"
-OUT=$(printf '{"workspace":{"current_dir":"%s","project_dir":"%s"}}' "$TS" "$TS" | python3 "$SCRIPTS/task_status.py")
-[ "$OUT" = "033 ✓2 ⏵1 ○2" ] || fail "task_status: спека по ветке, исполнитель в работе, старый и остановленный не в счёт" "$OUT"
-git -C "$TS" checkout -q -b main 2>/dev/null
-OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
-[ "$OUT" = "033 ✓2 ⏵1 ○2" ] || fail "task_status: без номера в ветке — последняя спека с открытыми" "$OUT"
-printf -- '- [x] T1\n' > "$TS/specs/033-feature/tasks.md"
-OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
-[ "$OUT" = "032 ✓0 ⏵1 ○0" ] || fail "task_status: закрытая спека пропускается, в работе не больше открытых" "$OUT"
+OUT=$(printf '{"session_id":"s1","workspace":{"current_dir":"%s","project_dir":"%s"}}' "$TS" "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "033 ✓2 ⏵1 ○2" ] || fail "task_status: спека по ветке, в работе — исполнители этой сессии; старый и остановленный не в счёт" "$OUT"
+OUT=$(printf '{"session_id":"s3","cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "033 ✓2 ⏵0 ○3" ] || fail "task_status: чужие исполнители не в работе у этой сессии" "$OUT"
+git -C "$TS" checkout -q -b feature/no-number 2>/dev/null
+OUT=$(printf '{"session_id":"s2","cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "⏵1" ] || fail "task_status: без номера в ветке спека не угадывается — только в работе" "$OUT"
+OUT=$(printf '{"session_id":"s3","cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
+[ -z "$OUT" ] || fail "task_status: без номера и без своих исполнителей — пусто" "$OUT"
 rm -rf "$TS/specs"
 OUT=$(printf '{"cwd":"%s"}' "$TS" | python3 "$SCRIPTS/task_status.py")
 [ -z "$OUT" ] || fail "task_status: без specs/*/tasks.md — пустой вывод" "$OUT"
