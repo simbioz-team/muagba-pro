@@ -36,6 +36,8 @@ declare module 'claude-code' {
   interface PluginState {
     'muagba-base': {
       tasks: Shaped<TaskView | null>
+      /** панель свёрнута в компактный вид: заголовок и счёт */
+      compact: boolean
     }
   }
 }

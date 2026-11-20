@@ -13,6 +13,14 @@ const KEY = 'tasks-pane'
 const EVERY_MS = 15_000
 // Тег меняется, когда меняются поля TaskView: старое значение переживает перезагрузку.
 const view = atom({ plugin: 'muagba-base', key: 'tasks' } as const, null, { shape: 'tasks-2' })
+// Компактный вид: заголовок и строка счёта, без списков. Выбор помнится между сессиями.
+const COMPACT_KEY = 'tasks-compact'
+const compact = atom({ plugin: 'muagba-base', key: 'compact' } as const, false)
+
+async function setCompact($: EngineInterface, on: boolean) {
+  await $.store.set(COMPACT_KEY, on)
+  await update($, compact, () => on)
+}
 // Файлы базы в проекте (блок правил AGENTS.md и др.) обновляет template_sync.py.
 // Хук SessionStart зовёт его только на старте сессии; после /plugin update и
 // /reload-plugins он не срабатывает, и новые правила ждали перезапуска. Модуль
@@ -156,8 +164,11 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'progress',
-      description: 'Панель задач спеки: /progress — включить или выключить, /progress on | off',
+      description: 'Панель задач спеки: /progress — включить или выключить, /progress on | off | compact | full',
     })
+    if ((await $.store.get(COMPACT_KEY)) === true) {
+      await update($, compact, () => true)
+    }
     if ((await $.store.get(KEY)) === true) {
       await turnOn($)
     }
@@ -170,6 +181,11 @@ export const register: Register = on => {
 
   on('command.run', { command: 'progress' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
+    if (arg === 'compact' || arg === 'full') {
+      await setCompact($, arg === 'compact')
+      await turnOn($)
+      return { text: arg === 'compact' ? 'Панель задач свёрнута. Развернуть — /progress full или кнопкой.' : 'Панель задач развёрнута.' }
+    }
     const isOpen = (await $.ui.panes()).some(p => p.id === PANE)
     const want = arg === 'on' ? true : arg === 'off' ? false : !isOpen
     if (!want) {
@@ -199,7 +215,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const v = await read($, view)
     if (v === null) {
       return (
@@ -208,20 +224,49 @@ export const register: Register = on => {
         </Box>
       )
     }
+    const small = await read($, compact)
+    // Кнопка сворачивания — в строке заголовка; c — то же с клавиатуры, пока панель в фокусе.
+    const head = (title: string) => (
+      <Box>
+        <Text bold wrap="truncate-end">
+          {title}
+        </Text>
+        <Text> </Text>
+        <Button
+          key="compact"
+          plain
+          dimColor
+          hotkey="c"
+          label={small ? '▸ развернуть' : '▾ свернуть'}
+          onPress={() => setCompact($, !small)}
+        />
+      </Box>
+    )
     if (v.spec === null && v.narta) {
       const n = v.narta
+      const counts = (
+        <Text>
+          <Text color="green">✓ {n.done}</Text> сделано · <Text color="yellow">⏵ {n.busy}</Text> в
+          работе · <Text color="magenta">◐ {n.review ?? 0}</Text> на проверке ·{' '}
+          <Text color="cyan">○ {n.left}</Text> осталось
+        </Text>
+      )
+      if (small) {
+        return (
+          <Box flexDirection="column">
+            {head('Задачи сессии в Narta')}
+            {counts}
+          </Box>
+        )
+      }
       const busy = n.tasks.filter(t => t.cat === 'in_progress')
       const review = n.tasks.filter(t => t.cat === 'review')
       const left = n.tasks.filter(t => t.cat === 'new' || t.cat === 'triage' || t.cat === '')
       const room = Math.max(3, (e.viewport?.rows ?? 24) - 8 - busy.length - review.length)
       return (
         <Box flexDirection="column">
-          <Text bold>Задачи сессии в Narta</Text>
-          <Text>
-            <Text color="green">✓ {n.done}</Text> сделано · <Text color="yellow">⏵ {n.busy}</Text> в
-            работе · <Text color="magenta">◐ {n.review ?? 0}</Text> на проверке ·{' '}
-            <Text color="cyan">○ {n.left}</Text> осталось
-          </Text>
+          {head('Задачи сессии в Narta')}
+          {counts}
           {busy.length > 0 && <Text dimColor>В работе:</Text>}
           {busy.map(t => (
             <Text wrap="truncate-end">
@@ -244,35 +289,46 @@ export const register: Register = on => {
         </Box>
       )
     }
+    const short = (t: string) => t.replace(/^muagba-base:/, '')
     if (v.spec === null) {
       return (
         <Box flexDirection="column">
+          {head('Задачи')}
           <Text dimColor wrap="truncate-end">
             Ветка {v.branch} не называет спеку (033-…) — счёта нет.
           </Text>
           <Text>
             <Text color="yellow">⏵ {v.busy}</Text> исполнителей этой сессии в работе
           </Text>
-          {v.agents.map(a => (
-            <Text wrap="truncate-end">
-              {'  '}
-              {a.type.replace(/^muagba-base:/, '')} · {a.minutes} мин
-            </Text>
-          ))}
+          {!small &&
+            v.agents.map(a => (
+              <Text wrap="truncate-end">
+                {'  '}
+                {short(a.type)} · {a.minutes} мин
+              </Text>
+            ))}
+        </Box>
+      )
+    }
+    const counts = (
+      <Text>
+        <Text color="green">✓ {v.done}</Text> сделано · <Text color="yellow">⏵ {v.busy}</Text> в
+        работе · <Text color="cyan">○ {v.left}</Text> осталось
+      </Text>
+    )
+    if (small) {
+      return (
+        <Box flexDirection="column">
+          {head(v.spec)}
+          {counts}
         </Box>
       )
     }
     const rows = Math.max(3, (e.viewport?.rows ?? 24) - 6 - v.agents.length)
-    const short = (t: string) => t.replace(/^muagba-base:/, '')
     return (
       <Box flexDirection="column">
-        <Text bold wrap="truncate-end">
-          {v.spec}
-        </Text>
-        <Text>
-          <Text color="green">✓ {v.done}</Text> сделано · <Text color="yellow">⏵ {v.busy}</Text> в
-          работе · <Text color="cyan">○ {v.left}</Text> осталось
-        </Text>
+        {head(v.spec)}
+        {counts}
         {v.agents.length > 0 && <Text dimColor>В работе:</Text>}
         {v.agents.map(a => (
           <Text wrap="truncate-end">

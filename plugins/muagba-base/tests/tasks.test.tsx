@@ -176,3 +176,32 @@ test('файлы базы: модуль зовёт синхронизацию н
   expect(appended.length).toBe(1)
   expect(appended[0]).toMatch(/Перечитай/)
 })
+
+test('кнопка сворачивает панель до заголовка и счёта; выбор помнится', async ($, on) => {
+  const store: Record<string, unknown> = {}
+  engine(on, store, [], [])
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'progress', args: 'on' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /T5 e/ })).toBeTruthy()
+  await ui.press({ key: 'compact' })
+  expect(store['tasks-compact']).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /T5 e/ })).toBeFalsy()
+  expect((await ui.find({ type: 'Text', text: /сделано/ }))?.text).toMatch(/2.*1.*2/)
+  await ui.press({ key: 'compact' })
+  expect(store['tasks-compact']).toBe(false)
+  expect(await ui.find({ type: 'Text', text: /T5 e/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('свёрнутая панель открывается свёрнутой; /progress full разворачивает', async ($, on) => {
+  const store: Record<string, unknown> = { 'tasks-pane': true, 'tasks-compact': true }
+  engine(on, store, [], [])
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /T5 e/ })).toBeFalsy()
+  await ui.unmount()
+  const r = await $.command.run({ command: 'progress', args: 'full' })
+  expect(r.text).toMatch(/развёрнута/)
+  expect(store['tasks-compact']).toBe(false)
+})
