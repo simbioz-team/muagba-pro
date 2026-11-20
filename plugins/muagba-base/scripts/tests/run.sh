@@ -2306,6 +2306,21 @@ OUT=$(printf 'не json' | python3 "$SCRIPTS/task_status.py"; echo "rc=$?")
 [ "$OUT" = "rc=0" ] || fail "task_status: битый вход — пусто и код 0" "$OUT"
 rm -rf "$TS"
 
+OUT=$(printf '{"cwd":"%s"}' "$(mktemp -d)" | python3 "$SCRIPTS/task_status.py" --json)
+[ "$OUT" = "null" ] || fail "task_status --json: без specs/*/tasks.md — null для панели" "$OUT"
+
+# --- мод панели задач (hooks/tasks.tsx): его прогоняет сам Claude Code ---------
+# Зависимость базы — bash, git, python3; claude есть не везде. Нет — пропуск,
+# а не зелёный: так и пишем.
+if command -v claude >/dev/null 2>&1; then
+  claude plugin validate "$(dirname "$SCRIPTS")" >/dev/null 2>&1 \
+    || fail "мод панели задач: claude plugin validate" "$(claude plugin validate "$(dirname "$SCRIPTS")" 2>&1 | grep -A2 '✘' | head -5)"
+  claude plugin test "$(dirname "$SCRIPTS")" >/dev/null 2>&1 \
+    || fail "мод панели задач: claude plugin test" "$(claude plugin test "$(dirname "$SCRIPTS")" 2>&1 | grep -A3 '(fail)' | head -8)"
+else
+  echo "пропуск: мод панели задач не проверен — нет claude"
+fi
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"

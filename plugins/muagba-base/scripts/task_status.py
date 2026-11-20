@@ -8,7 +8,8 @@
     seg=$(printf '%s' "$input" | python3 <плагин>/scripts/task_status.py)
 
 На входе — JSON строки состояния (stdin). На выходе — `033 ✓14 ⏵2 ○3` или
-пустая строка, если в проекте нет `specs/*/tasks.md`: как любой хук базы,
+пустая строка, если в проекте нет `specs/*/tasks.md`. С `--json` — то же
+подробно, для панели мода `tasks`: открытые задачи и исполнители в работе: как любой хук базы,
 без своего файла скрипт ничего не делает.
 
 - **спека** — по ветке (`033-…`, `033/…`), иначе последняя с открытыми
@@ -32,6 +33,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 BOX = re.compile(r"^\s*[-*] \[([ xX])\]", re.M)
+ITEM = re.compile(r"^\s*[-*] \[([ xX])\]\s*(.*)$")
 SPEC = re.compile(r"^(\d{3})-")
 BRANCH_SPEC = re.compile(r"(?:^|/)(\d{3})(?:[-/]|$)")
 TAIL = 512 * 1024
@@ -70,15 +72,24 @@ def pick_spec(top: Path, branch: str):
     return None
 
 
-def running(log: Path, now: datetime) -> int:
+def items(tasks: Path) -> list[dict]:
+    out = []
+    for line in tasks.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = ITEM.match(line)
+        if m:
+            out.append({"done": m.group(1) in "xX", "text": m.group(2).strip()})
+    return out
+
+
+def running(log: Path, now: datetime) -> list[dict]:
     try:
         with log.open("rb") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - TAIL))
             lines = f.read().decode("utf-8", "replace").splitlines()
     except OSError:
-        return 0
-    live: dict[str, datetime] = {}
+        return []
+    live: dict[str, tuple[datetime, str]] = {}
     for line in lines:
         try:
             r = json.loads(line)
@@ -89,10 +100,11 @@ def running(log: Path, now: datetime) -> int:
         if not aid:
             continue
         if r.get("event") == "SubagentStart" and "implementer" in (r.get("agent_type") or ""):
-            live[aid] = ts
+            live[aid] = (ts, r.get("agent_type") or "")
         elif r.get("event") == "SubagentStop":
             live.pop(aid, None)
-    return sum(1 for ts in live.values() if now - ts < STALE)
+    return [{"agent_id": aid, "type": t, "minutes": int((now - ts).total_seconds() // 60)}
+            for aid, (ts, t) in live.items() if now - ts < STALE]
 
 
 def main() -> int:
@@ -104,13 +116,24 @@ def main() -> int:
     cwd = ws.get("current_dir") or d.get("cwd") or "."
     top, branch = git_top_and_branch(cwd)
     spec = pick_spec(top, branch)
+    as_json = "--json" in sys.argv[1:]
     if spec is None:
+        if as_json:
+            print("null")
         return 0
     done, open_ = count(spec)
     # Журнал агентов пишет сессия, а не дерево (log-agent.sh, project_dir).
     proj = Path(ws.get("project_dir") or top)
-    busy = min(running(proj / ".claude" / "logs" / "agents.jsonl", datetime.now()), open_)
+    agents = running(proj / ".claude" / "logs" / "agents.jsonl", datetime.now())
+    busy = min(len(agents), open_)
     num = SPEC.match(spec.parent.name).group(1)
+    if as_json:
+        print(json.dumps({
+            "spec": spec.parent.name, "num": num, "path": str(spec),
+            "done": done, "busy": busy, "left": open_ - busy,
+            "agents": agents, "open": [i["text"] for i in items(spec) if not i["done"]],
+        }, ensure_ascii=False))
+        return 0
     print(f"{num} ✓{done} ⏵{busy} ○{open_ - busy}")
     return 0
 
