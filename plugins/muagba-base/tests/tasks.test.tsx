@@ -17,7 +17,17 @@ const PANE = {
   },
 } as const
 
-function engine(on: any, store: Record<string, unknown>, opened: string[], closed: string[], stdout = JSON.stringify(VIEW)) {
+const NARTA: Record<string, Record<string, string>> = {
+  'T-1': { key: 'T-1', title: 'сделанная', status_category: 'done' },
+  'T-2': { key: 'T-2', title: 'идёт', status_category: 'in_progress' },
+  'T-3': { key: 'T-3', title: 'ждёт', status_category: 'new' },
+}
+let writes: Array<{ path: string; text: string }> = []
+let calls: string[] = []
+
+function engine(on: any, store: Record<string, unknown>, opened: string[], closed: string[], stdout = JSON.stringify(VIEW), keys = '{"server":"","keys":[]}') {
+  writes = []
+  calls = []
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('store.get', (_: unknown, e: { key: string }) => ({ value: store[e.key] }))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { store[e.key] = e.value; return { value: undefined } })
@@ -27,7 +37,17 @@ function engine(on: any, store: Record<string, unknown>, opened: string[], close
   on('session.cwd', () => ({ value: '/p' }))
   on('session.root', () => ({ value: '/p' }))
   on('session.id', () => ({ value: 's1' }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout, stderr: '' } }))
+  on('process.run', (_: unknown, e: { argv: string[] }) => ({
+    value: { exitCode: 0, stdout: e.argv.includes('--narta-keys') ? keys : stdout, stderr: '' },
+  }))
+  on('session.info', () => ({ value: { transcriptPath: '/p/t.jsonl' } }))
+  on('clock.now', () => ({ value: Date.now() }))
+  on('fs.write', (_: unknown, e: { path: string; text: string }) => { writes.push(e); return { value: undefined } })
+  on('mcp.call', (_: unknown, e: { server: string; tool: string; args: { text: string } }) => {
+    calls.push(`${e.server}/${e.tool}/${e.args.text}`)
+    const row = NARTA[e.args.text]
+    return { value: { isError: false, content: [{ type: 'text', text: JSON.stringify({ data: row ? [row] : [] }) }] } }
+  })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('command.run', () => ({ text: '' }))
   // Таймер в тесте не тикает: отказ периода кончает интервал.
@@ -89,5 +109,38 @@ test('ветка без номера спеки: панель говорит э�
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /не называет спеку/ }))?.text).toMatch(/feature\/x/)
   expect(await ui.find({ type: 'Text', text: /implementer · 3 мин/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('задачи Narta сессии: статусы спрашиваются у Narta, итог пишется для строки состояния', async ($, on) => {
+  engine(on, {}, [], [], JSON.stringify(VIEW), JSON.stringify({ server: 'narta', keys: ['T-1', 'T-2', 'T-3'] }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'progress', args: 'on' })
+  expect(calls).toEqual(['narta/search_tasks/T-1', 'narta/search_tasks/T-2', 'narta/search_tasks/T-3'])
+  const w = writes.at(-1)
+  expect(w?.path).toBe('/p/.claude/logs/progress/s1.json')
+  const sum = JSON.parse(w?.text ?? '{}')
+  expect([sum.done, sum.busy, sum.left]).toEqual([1, 1, 1])
+})
+
+test('сессия без Narta к Narta не ходит и ничего не пишет', async ($, on) => {
+  engine(on, {}, [], [])
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'progress', args: 'on' })
+  expect(calls).toEqual([])
+  expect(writes).toEqual([])
+})
+
+test('панель показывает задачи Narta, когда ветка не называет спеку', async ($, on) => {
+  const v = { spec: null, branch: 'feature/x', busy: 1, agents: [], narta: { done: 1, busy: 1, left: 1, tasks: [
+    { key: 'T-1', title: 'сделанная', cat: 'done' }, { key: 'T-2', title: 'идёт', cat: 'in_progress' }, { key: 'T-3', title: 'ждёт', cat: 'new' }] } }
+  engine(on, {}, [], [], JSON.stringify(v))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'progress', args: 'on' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /Задачи сессии в Narta/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /T-2 идёт/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /T-3 ждёт/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /T-1 сделанная/ })).toBeFalsy()
   await ui.unmount()
 })

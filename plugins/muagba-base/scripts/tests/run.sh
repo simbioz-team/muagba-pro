@@ -2311,6 +2311,36 @@ rm -rf "$TS"
 OUT=$(printf '{"cwd":"%s"}' "$(mktemp -d)" | python3 "$SCRIPTS/task_status.py" --json)
 [ "$OUT" = "null" ] || fail "task_status --json: без specs/*/tasks.md — null для панели" "$OUT"
 
+# --- task_status: задачи Narta сессии --------------------------------------------
+TN="$(mktemp -d)"
+git -C "$TN" init -q -b feature/no-number 2>/dev/null
+mkdir -p "$TN/specs/001-x"; printf -- '- [ ] T1\n' > "$TN/specs/001-x/tasks.md"
+cat > "$TN/t.jsonl" <<'JSONL'
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"mcp__narta__take_task","input":{"task_id":"T-5"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"mcp__narta__create_tasks","input":{"tasks":[{"title":"x"}]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"u2","content":"{\"data\":{\"tasks\":[{\"id\":\"11111111-aaaa\",\"key\":\"T-6\"}]}}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u3","name":"mcp__narta__transition_task","input":{"task_id":"11111111-aaaa"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u4","name":"mcp__narta__get_task","input":{"task_id":"T-9"}}]}}
+JSONL
+IN=$(printf '{"session_id":"s9","transcript_path":"%s","workspace":{"current_dir":"%s","project_dir":"%s"}}' "$TN/t.jsonl" "$TN" "$TN")
+OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py" --narta-keys)
+[ "$OUT" = '{"server": "narta", "keys": ["T-5", "T-6"]}' ] || fail "task_status --narta-keys: взятые и созданные, UUID через ответ create_tasks, чтение — не в счёт" "$OUT"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u5","name":"mcp__narta-agent__take_task","input":{"task_id":"T-7"}}]}}' >> "$TN/t.jsonl"
+OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py" --narta-keys)
+[ "$OUT" = '{"server": "narta-agent", "keys": ["T-5", "T-6", "T-7"]}' ] || fail "task_status --narta-keys: дочитывает с прошлого места" "$OUT"
+mkdir -p "$TN/.claude/logs/progress"
+printf '{"done":3,"busy":1,"left":2,"tasks":[]}' > "$TN/.claude/logs/progress/s9.json"
+OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py")
+[ "$OUT" = "N ✓3 ⏵1 ○2" ] || fail "task_status: без спеки в ветке — итог Narta сессии" "$OUT"
+OUT=$(printf '{"session_id":"s8","cwd":"%s"}' "$TN" | python3 "$SCRIPTS/task_status.py")
+[ -z "$OUT" ] || fail "task_status: итог Narta чужой сессии не показывается" "$OUT"
+touch -d '1 hour ago' "$TN/.claude/logs/progress/s9.json"
+OUT=$(printf '%s' "$IN" | python3 "$SCRIPTS/task_status.py")
+[ -z "$OUT" ] || fail "task_status: несвежий итог Narta не показывается" "$OUT"
+OUT=$(printf '{"session_id":"s9","cwd":"%s"}' "$TN" | python3 "$SCRIPTS/task_status.py" --narta-keys)
+[ "$OUT" = '{"server": "", "keys": []}' ] || fail "task_status --narta-keys: без стенограммы — пусто" "$OUT"
+rm -rf "$TN"
+
 # --- мод панели задач (hooks/tasks.tsx): его прогоняет сам Claude Code ---------
 # Зависимость базы — bash, git, python3; claude есть не везде. Нет — пропуск,
 # а не зелёный: так и пишем.
