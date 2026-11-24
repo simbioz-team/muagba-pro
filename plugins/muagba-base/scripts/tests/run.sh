@@ -2365,6 +2365,19 @@ else
   echo "пропуск: мод панели задач не проверен — нет claude"
 fi
 
+# --- entry.size: блоки базы не в счёт, свой текст — в счёт -------------------
+ES=$(mktemp -d); git -C "$ES" init -q
+{ seq 1 50 | sed 's/^/свой /'; echo '<!-- muagba:begin base-rules -->'; seq 1 250; echo '<!-- muagba:end base-rules -->'; } > "$ES/AGENTS.md"
+[ "$(verdict "$ES" entry.size)" = ok ] \
+  || fail "entry.size: блок base-rules не должен считаться" "$(detail "$ES" entry.size)"
+seq 1 210 | sed 's/^/свой /' >> "$ES/AGENTS.md"
+[ "$(verdict "$ES" entry.size)" != ok ] \
+  || fail "entry.size: 260 строк своего текста должны краснеть" "$(detail "$ES" entry.size)"
+rm -rf "$ES"
+# Храповик: блок base-rules не растёт. Нужен больше — ужми и опусти порог.
+BR=$(wc -l < "$(dirname "$SCRIPTS")/sync/blocks/base-rules.md")
+[ "$BR" -le 230 ] || fail "base-rules.md вырос до $BR строк (порог 230)" "ужать блок, подробности — в документ базы"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"

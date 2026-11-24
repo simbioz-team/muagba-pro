@@ -412,16 +412,23 @@ def pr_entry_import(c: Ctx) -> V:
                "CLAUDE.md: строка @AGENTS.md")
 
 
+MANAGED_BLOCK = re.compile(r"<!-- muagba:begin ([\w.-]+)\b[^\n]*?-->.*?<!-- muagba:end \1 -->", re.S)
+
+
 def pr_entry_size(c: Ctx) -> V:
+    # Блоки muagba:begin/end вставляет база, проект их не правит и ужать не
+    # может: base-rules сам перерос 200 строк в 0.23.10, и проба краснела
+    # у любого проекта. Здесь считается свой текст проекта; размер блока
+    # сторожит тест базы (храповик в tests/run.sh).
     long = []
     for name in ("AGENTS.md", "CLAUDE.md"):
         txt = c.read(name)
         if txt is not None:
-            n = len(txt.splitlines())
+            n = len(MANAGED_BLOCK.sub("", txt).splitlines())
             if n > 200:
                 long.append(f"{name}: {n} строк")
     if long:
-        return bad("свод разросся — " + ", ".join(long),
+        return bad("свой текст свода (без блоков базы) разросся — " + ", ".join(long),
                    "вынести то, что касается части кода, в .claude/rules/")
     return ok()
 

@@ -68,7 +68,7 @@
 |---|---|---|---|
 | `entry.files` | свод правил существует | есть `AGENTS.md` либо `CLAUDE.md` | М |
 | `entry.import` | источник истины один | при наличии обоих `CLAUDE.md` содержит `@AGENTS.md` | М |
-| `entry.size` | свод не разросся | каждый файл ≤ 200 строк | М |
+| `entry.size` | свод не разросся | свой текст каждого файла ≤ 200 строк; блоки базы `muagba:begin/end` не в счёт | М |
 | `entry.plugins` | инструменты конвейера объявлены | `muagba-base` и `docsys` в `enabledPlugins` | М |
 | `entry.docsys` | система документации развёрнута | `.claude/doc-config.json` существует | М |
 | `entry.sources` | принесённые материалы оформлены | у каждого файла в `docs/sources/` есть `origin`, и он в реестре | М·У |
