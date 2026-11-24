@@ -1,0 +1,231 @@
+{
+  "_note": "Храповик и исключения реестра тестов (scripts/test_registry.py). `core_ceiling` — потолок свалки: расти нельзя, убывать можно. Новый тест обязан попасть под правило или получить здесь исключение. `exceptions` — карта `нормализованная метка → группа` для модулей, чьё имя врёт о содержании: номера ADR и задач содержания не несут. Основание: docs/architecture/algorithms/design-test-orchestration.md §4.2-4.3.",
+  "_frozen": "2026-09-10",
+  "core_ceiling": 2,
+  "_core_ceiling_note": "Замерено на ветке feature/agent-base-structure: 541 тест-модуль в семи средах, в свалке остаются двое — `courses.tests.test_main` и `courses.tests_integration` (с Э12.1 — `courses.tests.test_integration`). Оба там законно: это и есть «API, модели, интеграционные», у них нет предметной области уже, чем весь курс.",
+  "exceptions": {
+    "tests_test_models": "graph",
+    "tests_trainer_fix_notice_banner": "ui",
+    "courses_tests_test_backfill_adr087": "platform",
+    "courses_tests_test_coverage_check": "content",
+    "courses_structure_gen_tests_test_t714_preseed_dedup": "structure",
+    "courses_course_pipeline_tests_test_cancel_graph_view": "structure",
+    "courses_course_pipeline_tests_test_content_phase_recovery": "content",
+    "courses_track_manage_tests_test_pace_forecast": "platform",
+    "courses_track_manage_tests_test_track_regeneration_guard": "lessons",
+    "scripts_tests_test_ci_nightly_gate": "governance",
+    "scripts_tests_test_ci_plan": "governance",
+    "scripts_tests_test_ci_images": "governance",
+    "scripts_tests_test_ci_quick_checks": "governance",
+    "scripts_tests_test_check_codes": "governance",
+    "scripts_tests_test_check_problem_responses": "governance",
+    "scripts_tests_test_gen_problem_codes_doc": "governance",
+    "scripts_tests_test_check_problem_catalog": "governance",
+    "scripts_tests_test_gen_api_problems": "governance",
+    "scripts_tests_test_gen_service_problems": "governance",
+    "scripts_tests_test_api_contract_stand": "governance",
+    "tests_components_member_card": "platform",
+    "scripts_tests_test_check_error_text_branching": "governance",
+    "tests_api_failure_api_failure_host": "platform",
+    "tests_api_failure_api_failure_interceptor": "platform",
+    "tests_api_failure_routes_react_to_failures": "platform",
+    "tests_api_failure_static_error_texts": "platform",
+    "courses_structure_gen_tests_test_ksa_order_selfrepair": "graph",
+    "courses_structure_gen_tests_test_topic_bounds_enforce": "graph",
+    "courses_course_graph_editor_tests_test_brief_consistency_surface": "structure",
+    "courses_course_structure_tests_test_topic_ksa_link_slots": "graph",
+    "courses_billing_tariffs_tests_test_charges": "platform",
+    "courses_billing_tariffs_tests_test_t1146": "platform",
+    "courses_billing_tariffs_tests_test_t1150": "platform",
+    "courses_tests_test_learning_task_deletion_log_append_only": "graph",
+    "courses_tests_test_all_courses_list": "platform",
+    "courses_tests_test_course_cover_view": "platform",
+    "courses_tests_test_systemkeyed_readers": "graph",
+    "courses_lesson_tests_test_multi_carrier": "content",
+    "courses_topic_content_tests_test_repro_recreate_topic": "graph",
+    "courses_diagnostic_bank_tests_test_bloom_retag": "structure",
+    "courses_documents_tests_test_formula_latex": "content",
+    "courses_documents_tests_test_section_text": "content",
+    "courses_lesson_tests_test_topic_modes": "graph",
+    "courses_lesson_tests_test_content_engine_text": "content",
+    "courses_lesson_tests_test_item_template_seed": "banks",
+    "courses_topic_content_tests_test_anchor_distribution": "structure",
+    "courses_course_graph_editor_tests_test_debug_panels_flag": "platform",
+    "courses_course_graph_editor_tests_test_repro_ksa_order_deadlock": "graph",
+    "courses_course_graph_editor_tests_test_repro_orphan_assign_order": "graph",
+    "tests_test_problem_responses": "transport",
+    "tests_test_problems": "documents",
+    "courses_course_goal_tests_test_api": "structure",
+    "courses_course_goal_tests_test_criteria": "structure",
+    "courses_course_goal_tests_test_services": "structure",
+    "courses_course_goal_tests_test_slice": "structure",
+    "courses_course_goal_tests_test_slice_rules": "structure",
+    "courses_course_goal_tests_test_composition": "structure",
+    "courses_course_goal_tests_test_composition_rules": "structure",
+    "courses_course_goal_tests_test_composition_invariants": "structure",
+    "courses_course_goal_tests_test_composition_drift": "structure",
+    "tests_utils_course_goal": "structure",
+    "tests_components_goal_slice_preview": "structure",
+    "courses_course_goal_tests_test_suggest": "structure",
+    "courses_course_goal_tests_test_suggest_payer_retry": "structure",
+    "tests_test_course_goal_suggest": "structure",
+    "tests_components_goal_scope_block": "structure",
+    "tests_components_final_tasks_block": "structure",
+    "courses_exam_trainer_tests_test_checking": "banks",
+    "courses_exam_trainer_tests_test_sessions": "banks",
+    "courses_exam_trainer_tests_test_cleanup": "banks",
+    "courses_exam_trainer_tests_test_showcase_mastery": "banks",
+    "courses_exam_trainer_tests_test_topics": "banks",
+    "courses_exam_trainer_tests_test_reports": "banks",
+    "courses_exam_trainer_tests_test_retry_wrong": "banks",
+    "courses_exam_trainer_tests_test_research_snapshot": "banks",
+    "courses_exam_trainer_tests_test_after_fix": "banks",
+    "courses_exam_trainer_tests_test_fixes": "banks",
+    "courses_exam_trainer_tests_test_fix_api": "banks",
+    "tests_test_exam_kim_position": "banks",
+    "courses_exam_solver_tests_test_solver": "banks",
+    "tests_test_exam_solve": "banks",
+    "courses_exam_solver_tests_test_screen": "banks",
+    "courses_exam_solver_tests_test_control_set": "banks",
+    "courses_exam_solver_tests_test_figures": "banks",
+    "courses_exam_methodologist_queue_tests_test_queue": "banks",
+    "courses_exam_methodologist_queue_tests_test_reports_review": "banks",
+    "courses_exam_methodologist_queue_tests_test_sample": "banks",
+    "courses_exam_methodologist_queue_tests_test_steps": "banks",
+    "courses_exam_methodologist_queue_tests_test_reference_origin": "banks",
+    "courses_exam_reference_fix_tests_test_recheck": "banks",
+    "courses_exam_reference_fix_tests_test_race": "banks",
+    "courses_exam_reference_fix_tests_test_carry_over": "banks",
+    "courses_exam_reference_fix_tests_test_watch": "banks"
+  },
+  "_exceptions_note": "Раскладка номерных модулей унаследована от scripts/ci_test_groups.py, где те же t1006/t673/t930 значились уроками, t990 — графом, t1008 — генерацией: это прежнее знание проекта, а не догадка. Остальные проверены по docstring: adr066 — носители теории на линии, adr087 — smoke команды обратной засыпки, t714 — дедуп пред-сида брифа против генерации. courses_course_pipeline_tests_test_cancel_graph_view (T-1505): тесты стоп-крана cancel-graph переехали из courses.tests_generation_recovery (группа structure) в course_pipeline, где правило `course_pipeline` отдало бы их в saga; группа CI сохранена прежней — перенос не меняет, где тест гоняется. courses_course_pipeline_tests_test_content_phase_recovery (Э5.2): класс ForwardPrimitiveTests переехал из courses.tests_b3_content_phase_recovery (группа content) в course_pipeline вслед за сторожем forward_stuck_content_phase_to_gate2; правило `course_pipeline` отдало бы его в saga, группа сохранена прежней по тому же принципу. courses_track_manage_tests_test_track_regeneration_guard (T-1526): класс TrackRegenerationGuardTests переехал из courses.tests_lesson_runtime_canon (группа lessons) в track_manage вслед за _persist_generated_user_track; правило `track` отдало бы его в graph, группа сохранена прежней по тому же принципу. courses_track_manage_tests_test_pace_forecast (T-1533): модуль courses.tests_pace_forecast (группа platform) переехал в track_manage вслед за UserTrackReadSerializer — хук test-location требует, чтобы тест одного подпакета жил в нём; правило `track` отдало бы его в graph, группа сохранена прежней по тому же принципу. scripts_tests_test_check_codes и scripts_tests_test_check_problem_responses (T-1509) — тесты сверок реестра кодов ответа: общего слова с правилом governance у них нет, а `codes`/`responses` в правило не берём — утащили бы продуктовые метки. scripts_tests_test_check_error_text_branching (T-1511) — тест линтера «фронт не ветвится по тексту ошибки» (ADR-113 п. 3.1), той же природы, что сверки T-1509. scripts_tests_test_gen_problem_codes_doc (T-1200 AC-9) — тест генератора таблицы кодов из того же реестра, той же природы. scripts_tests_test_check_problem_catalog (T-1508) — тест сверки полноты каталога текстов против того же реестра, той же природы. scripts_tests_test_gen_api_problems (T-1512) — тест генератора ошибок по ручкам OpenAPI из того же реестра, той же природы. courses_structure_gen_tests_test_ksa_order_selfrepair, courses_structure_gen_tests_test_topic_bounds_enforce и courses_structure_gen_tests_test_topic_ksa_link_slots (Э6.2c): модули courses.tests.* (группа graph) переехали в structure_gen вслед за цепочкой фазы 1 — хук test-location требует, чтобы тест одного подпакета жил в нём; правило `structure` отдало бы их в structure, группа сохранена прежней по тому же принципу; test_topic_ksa_link_slots с Э8 шага 5b — в course_structure вслед за писателем create_topic_ksa_links, метка courses_course_structure_tests_test_topic_ksa_link_slots, группа прежняя (graph). Метка t714 переименована по новому пути модуля, группа прежняя. courses_course_graph_editor_tests_* (Э7.1a): test_brief_consistency_surface (structure), tests_debug_panels_flag (platform), tests_repro_ksa_order_deadlock и tests_repro_t979_orphan_assign_order (graph) переехали из courses/ и courses/tests/ в course_graph_editor вслед за чтением черновика графа — хук test-location требует, чтобы тест одного подпакета жил в нём; слово `editor` в пути отдало бы их в content, группа сохранена прежней по тому же принципу; метка t979 переименована по новому пути. courses_lesson_tests_tests_content_engine_text (content) и courses_lesson_tests_tests_item_template_seed (banks) (Э9.4): модули courses.tests_* переехали в пакет урока lesson/ — хук test-location требует, чтобы тест одного подпакета жил в нём; слово `lesson` в пути отдало бы их в lessons, группа сохранена прежней по тому же принципу. courses.tests_t673_rce8_reshuffle переехал туда же: по новому пути правило `lessons` даёт прежнюю группу, запись-исключение снята. Э9.4b (тесты урока в lesson/tests/): courses_lesson_tests_tests_adr094_topic_modes (graph) — группа сохранена прежней; courses.tests_t1006_hinted_retry_bridge переехал туда же, правило `lessons` даёт прежнюю группу, запись-исключение снята. Э10.2 (тарифный контур в billing/tariffs/): courses_billing_tariffs_tests_test_charges, courses_billing_tariffs_tests_test_t1146 и courses_billing_tariffs_tests_test_t1150 переехали из access_registry/spaces (группа platform) в billing/tariffs/tests/ — хук test-location требует, чтобы тест подпакета жил в нём; слово `billing` в пути отдало бы их в billing, группа сохранена прежней по тому же принципу. Остальные тесты тарифов (test_subscriptions, test_tariff_switch, test_staff_tariff, test_tariff_renewal, test_personal_subscription_coverage) и до переноса были в billing. Э12.1 (легаси tests_*.py корня courses/ разнесены по владельцам, testing.md §2, исключение 29.10.2026): группа каждого модуля сохранена прежней; где правило по новому пути дало бы другую группу, заведено исключение с прежней группой, а исключение по старой метке снято — courses_tests_test_learning_task_deletion_log_append_only (graph, был adr074_append_only), courses_tests_test_all_courses_list (platform), courses_tests_test_course_cover_view (platform, был student_courses_catalog), courses_tests_test_systemkeyed_readers (graph, был t990_systemkeyed_readers), courses_lesson_tests_test_multi_carrier (content, был adr066_multi_carrier); courses.tests_t930_coverage_lost_update переехал в lesson/tests/test_coverage_lost_update — правило `lessons` даёт прежнюю группу, запись-исключение снята. courses_topic_content_tests_test_repro_recreate_topic (graph): репро пересоздания темы переехал в topic_content/tests/ — слово `topic_content` отдало бы его в content, группа сохранена прежней. courses_diagnostic_bank_tests_test_bloom_retag (structure): перетегирование уровней Блума банка переехало в diagnostic_bank/tests/ — правило по новому пути отдало бы его в banks, группа сохранена прежней. courses_documents_tests_test_formula_latex и courses_documents_tests_test_section_text (content): формулы LaTeX и текст разделов документа переехали в documents/tests/ — правило `documents` отдало бы их в documents, группа сохранена прежней. Э12.2 (легаси tests_*.py подмодулей courses/ — в <пакет>/tests/test_*.py, testing.md §2, исключение 29.10.2026): группа каждого модуля прежняя; исключения по старым меткам переименованы по новым путям — courses_lesson_tests_test_topic_modes (graph, был adr094_topic_modes), courses_lesson_tests_test_content_engine_text (content), courses_lesson_tests_test_item_template_seed (banks), courses_topic_content_tests_test_anchor_distribution (structure, был t1008_anchor_distribution); исключение courses_topic_content_tests_tests_adr066_regenerate_scope снято — по новому пути test_regenerate_scope правило `topic_content` даёт прежнюю группу (content). Исключения course_graph_editor переименованы так же: courses_course_graph_editor_tests_test_debug_panels_flag (platform), courses_course_graph_editor_tests_test_repro_ksa_order_deadlock (graph), courses_course_graph_editor_tests_test_repro_orphan_assign_order (graph, был t979). tests_api_failure_* (T-1616) — общая реакция кабинета и staff на отказы API (ADR-113 п. 1.12): слово `failure` правилом не берётся, по смыслу это `api_error` группы platform. T-1513 (ответы внутренних сервисов об ошибке, ADR-113 п. 1.2а): scripts_tests_test_gen_service_problems — тест генератора реестров сервисов, той же природы, что сверки T-1509 (governance); tests_test_problem_responses (ml-llm) — обработчик ответов об ошибке и разбор отказа провайдера в type транспорта (transport); tests_test_problems (web-import) — ответы импорта страницы об ошибке (documents): слова `problem` правило не берёт. scripts_tests_test_api_contract_stand (T-1514) — тест обвязки контрактного прогона Schemathesis по стенду (ADR-113 п. 3.4) против того же реестра ручек, той же природы, что сверки T-1509/T-1512. courses_course_goal_tests_test_api, _test_criteria, _test_services (T-2262, подзадача 5.0), _test_slice, _test_slice_rules (подзадача 5b), _test_composition, _test_composition_rules (подзадача 5d-1, состав курса из среза), _test_composition_drift (подзадача 5d-2, дрейф состава): цель курса через итоговые задачи — вход генерации структуры (срез цели), поэтому группа structure; слов `goal`/`final_task` правило не берёт, без исключения тесты ушли бы в core; tests_utils_course_goal (frontend, клиент API цели) , tests_components_goal_slice_preview (frontend, превью среза, подзадача 5b) и tests_components_goal_scope_block (frontend, точка входа и исключения цели, подзадача 5a-B) — по той же причине; tests_components_final_tasks_block (frontend, итоговые задачи, подзадача 5a-B) — тоже: правило banks по слову `task` отдало бы его в banks. courses_course_goal_tests_test_suggest (подзадача 5a: подбор целевых умений моделью и поиск по каталогу) и tests_test_course_goal_suggest (ml-llm, тот же подбор) — по той же причине. courses_course_goal_tests_test_suggest_payer_retry (ревью 5c: повтор запуска подбора после подтверждения плательщика с тем же ключом) — тот же подбор, по той же причине; слово `payer` правило billing не берёт. courses_exam_trainer_tests_test_checking и courses_exam_trainer_tests_test_sessions (T-1285, ADR-119): тренажёр — потребитель банка экзаменационных задач, его тесты — в группе banks рядом с exam_tasks; без исключения проверка ответа ушла бы в свалку core, а сессии по слову `sessions` — в lessons. courses_exam_trainer_tests_test_cleanup (T-1285, D9-3) — чистка анонимных сессий тренажёра, той же группы banks; без исключения ушла бы в свалку core. courses_exam_trainer_tests_test_showcase_mastery (T-1285, Т-9) — учёт мастерства с витрины тренажёра, группа banks; без исключения по слову `mastery` ушёл бы в graph. courses_exam_trainer_tests_test_topics (T-1285, D9-1) — темы КЭС тренажёра, группа banks; без исключения по слову `topics` ушёл бы в graph. courses_exam_trainer_tests_test_reports и courses_exam_trainer_tests_test_retry_wrong (T-1285, D9-2) — сообщения учеников об ошибке в задаче и повтор «только неверные», группа banks; без исключения ушли бы в свалку core. courses_exam_trainer_tests_test_research_snapshot (T-1285, НИОКР-1) — снимок P(L) и прогноза BKT у каждой попытки вошедшего, группа banks; без исключения ушёл бы в свалку core. tests_test_exam_kim_position (ml-llm, T-1285, КИМ-1) — выбор номера КИМ задачи банка из закрытого списка, группа banks рядом с exam_tasks; без исключения ушёл бы в свалку core. courses_exam_solver_tests_test_solver и tests_test_exam_solve (ml-llm) (T-2232, S1) — решатель задач банка и его ручки ml-llm, группа banks рядом с exam_tasks; без исключения ушли бы в свалку core. courses_exam_solver_tests_test_screen (T-2232, S2a) — экран решателя (оценка, запуск, стоп, журнал), группа banks рядом с test_solver; без исключения ушёл бы в свалку core. courses_exam_solver_tests_test_control_set (T-2232, S2b) — контрольный набор решателя и порог версии, группа banks рядом с test_screen; без исключения ушёл бы в свалку core. courses_exam_solver_tests_test_figures (T-2232, чтение рисунков решателем) — вставки-записи, прозрачные графики, третий прогон без чисел, группа banks рядом с test_solver; без исключения ушёл бы в свалку core. courses_exam_methodologist_queue_tests_test_queue (T-2238, этап 1) — очередь методолога «Расхождения» и решения по ней, группа banks рядом с test_screen решателя; без исключения ушёл бы в свалку core. courses_exam_methodologist_queue_tests_test_reports_review (T-2238, правка ревью этапа 2) — сообщения учеников в очереди: задачи без номера, граница «видел», метка отправителя, группа banks рядом с test_queue; без исключения ушёл бы в свалку core. courses_exam_methodologist_queue_tests_test_sample и courses_exam_methodologist_queue_tests_test_steps (T-2238, этап 3) — выборка эталонов модуля (ОМ-3, ОМ-5) и правка шага решения методологом (Р-16), группа banks рядом с test_queue; без исключения ушли бы в свалку core. courses_exam_methodologist_queue_tests_test_reference_origin (T-2240, Э1) — источник замены эталона очереди (ОМ-5, ОМ-6) в окне банка «эталон заменён», группа banks рядом с test_sample; без исключения ушёл бы в свалку core. courses_exam_trainer_tests_test_after_fix (T-2240, Э2) — эталон у попытки и повтор после исправления вердикта, группа banks рядом с test_research_snapshot; без исключения ушёл бы в свалку core. courses_exam_trainer_tests_test_fixes (T-2240, Э3) — пересчёт вердиктов после замены эталона и плашка ученика, группа banks рядом с test_after_fix; без исключения ушёл бы в свалку core. courses_exam_reference_fix_tests_test_recheck, courses_exam_reference_fix_tests_test_race и courses_exam_reference_fix_tests_test_carry_over (T-2240, Э4) — журнал замен эталона, пересчёт вердиктов по порядку, гонка двух воркеров и обратный перенос замен (модуль 5), группа banks рядом с test_fixes; без исключения ушли бы в свалку core. courses_exam_reference_fix_tests_test_watch (T-2240, Э7) — сторож доверия к эталонам ЗЭ-3 и staff API предупреждений (модуль 5), группа banks рядом с test_recheck; без исключения ушёл бы в свалку core. Обратный перенос назван carry_over, а не backfill: свежей базы он не требует, а слово `backfill` пометило бы его fresh_db_only.",
+  "_heavy_note": "Тяжёлые модули (T-1404): дневной прогон CI пропускает их, если не тронут ни один сторожимый путь; ночной гоняет всё. Ключ — путь модуля от корня репозитория (он же первый сторожимый путь, добавляется сам). `guards` — шаблоны glob от корня: `*` не переходит через `/`, `**` переходит. Модуль с пометкой fresh_db_only (имя: migration|migrate|schema_change|backfill) тяжёлый всегда и обязан быть здесь со сторожимыми путями — иначе `test_registry.py --check` красный. Исключение — модуль test_migration_<NNNN>… (T-1406): страж — файл его миграции — выводится из имени, записи здесь не нужно; пока миграции нет в main, он не тяжёлый и идёт днём всегда. Сторожим ровно то, что модуль проверяет (свою миграцию, свою команду), а не все миграции: иначе каждая новая миграция возвращала бы тяжёлые тесты в дневной прогон. Поломку тяжёлого теста чужой правкой ловит ночной прогон, а красный ночной блокирует деплой на прод. Устройство — docs/engineering/testing.md §5.",
+  "heavy": {
+    "services/django-api/courses/tests/test_backfill_adr087.py": {
+      "why": "fresh_db_only",
+      "guards": [
+        "services/django-api/courses/management/commands/backfill_adr087_projection.py"
+      ]
+    },
+    "services/django-api/courses/saga/tests/test_backfill_saga_jobs.py": {
+      "why": "fresh_db_only",
+      "guards": [
+        "services/django-api/courses/management/commands/backfill_saga_jobs.py"
+      ]
+    },
+    "services/django-api/courses/tests/test_tariff_subscription_migration.py": {
+      "why": "fresh_db_only",
+      "guards": [
+        "services/django-api/courses/migrations/0191_*.py",
+        "services/django-api/courses/migrations/0192_*.py",
+        "services/django-api/courses/migrations/0193_*.py",
+        "services/django-api/courses/migrations/0194_*.py",
+        "services/django-api/courses/migrations/0195_*.py",
+        "services/django-api/courses/migrations/0196_*.py"
+      ]
+    },
+    "services/django-api/courses/usage_costs/tests/test_balance_performance.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/billing/tariffs/charges.py",
+        "services/django-api/courses/usage_ledger/models.py"
+      ]
+    },
+    "services/django-api/courses/saga/tests/test_timing.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/migrations/0059_create_saga_tables.py"
+      ]
+    },
+    "services/django-api/courses/saga/tests/test_coordinator_overhead.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/saga/services.py",
+        "services/django-api/courses/saga/locks.py",
+        "services/django-api/courses/saga/state_machine.py"
+      ]
+    },
+    "services/django-api/courses/ukgs/tests/test_timing.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/ukgs/services.py",
+        "services/django-api/courses/ukgs/cascade.py",
+        "services/django-api/courses/ukgs/locks.py"
+      ]
+    },
+    "services/django-api/courses/mastery_compute/tests/test_timing.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/mastery_compute/compute.py",
+        "services/django-api/courses/mastery_compute/bkt_math.py",
+        "services/django-api/courses/mastery_compute/eligibility.py",
+        "services/django-api/courses/mastery_compute/weight_policy.py"
+      ]
+    },
+    "services/django-api/courses/dialogue/tests/test_rule_dispatch_timing.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/rule_engine/evaluator.py",
+        "services/django-api/courses/rule_engine/jsonlogic_adapter.py"
+      ]
+    },
+    "services/django-api/courses/track_manage/tests/test_track_timing.py": {
+      "why": "порог по настенному времени (T-1407)",
+      "guards": [
+        "services/django-api/courses/track_manage/services.py",
+        "services/django-api/courses/track_manage/orchestrator.py",
+        "services/django-api/courses/track_manage/planner.py"
+      ]
+    },
+    "services/django-api/courses/task_classes/tests/test_rung_switch_backfill.py": {
+      "why": "fresh_db_only",
+      "guards": [
+        "services/django-api/courses/migrations/0284_*.py",
+        "services/django-api/courses/management/commands/rung_rule_report.py"
+      ]
+    }
+  },
+  "_migration_test_exceptions_note": "Исключения из правила жизни тестов миграций (T-1406, scripts/check_migration_tests.py, docs/engineering/testing.md §5.2): путь модуля → `why` и `decision`. Нарушение исключённого модуля печатается предупреждением, а не ошибкой. Исключение без нарушения, на несуществующий модуль или без `why`/`decision` — ошибка: список только убывает. Три модуля ниже жили по T-1405 («в ночном прогоне до следующего релиза») до появления правила; удалять их — решение владельца, вне T-1406.",
+  "migration_test_exceptions": {
+    "services/django-api/courses/tests/test_migration_0185.py": {
+      "why": "просрочен: миграция 0185 в main с 28.08.2026 (fcfbee81) и пережила следующие мержи. Модуль жил по T-1405 до введения правила; удалять тесты T-1406 не может («Что не делаем»)",
+      "decision": "решение владельца 20.10.2026: держать до релиза, как решено в T-1405; после следующего релиза (мержа develop в main) модуль удалить вместе с этой записью"
+    },
+    "services/django-api/courses/tests/test_migration_0190.py": {
+      "why": "просрочен: миграция 0190 в main с 14.09.2026 (1b90e7cf) и пережила следующие мержи. Модуль жил по T-1405 до введения правила; удалять тесты T-1406 не может («Что не делаем»)",
+      "decision": "решение владельца 20.10.2026: держать до релиза, как решено в T-1405; после следующего релиза (мержа develop в main) модуль удалить вместе с этой записью"
+    },
+    "services/django-api/courses/tests/test_tariff_subscription_migration.py": {
+      "why": "откат схемы вне модуля test_migration_<NNNN>…: один модуль проверяет диапазон 0191–0196 (стражи — в разделе heavy). Переносить существующие тесты T-1406 не может («Что не делаем»)",
+      "decision": "решение владельца 20.10.2026: держать до релиза, как решено в T-1405; после следующего релиза (мержа develop в main) модуль удалить вместе с этой записью"
+    }
+  },
+  "_fingerprint_inputs_note": "Отпечаток группы CI (ADR-117 D3): входные пути среды, от которых зависит итог её тестов. Группа, прошедшая с тем же отпечатком, не гоняется снова (scripts/ci_plan.py). `_common` входит в отпечаток каждой среды. Быстрые группы (lint, saga, codes, frontend) берут всё дерево и здесь не перечисляются. Полноту для django-api проверяет хук аудита чтений (scripts/ci/readaudit): чтение под /repo вне этих путей — группа не получает отметку, сводка называет путь. Правило грубое (решение владельца 03.11.2026): правка в любом входном пути перезапускает все группы среды. infra/ml-llm-models не в git (качается скриптом) — в отпечаток не входит.",
+  "fingerprint_inputs": {
+    "_common": [
+      ".env.example",
+      "docker-compose.yml",
+      "docker-compose.ci.yml",
+      "docs/engineering/test-registry.json",
+      "scripts/test_registry.py",
+      "scripts/check_migration_tests.py",
+      "scripts/ci_plan.py",
+      "scripts/ci_images.py",
+      "scripts/ci_django_test_groups.sh",
+      "scripts/ci/readaudit"
+    ],
+    "django-api": [
+      "services",
+      "docs/product/features/tarify-i-podpiska"
+    ],
+    "ml-llm": [
+      "services/ml-llm"
+    ],
+    "ml-bkt": [
+      "services/ml-bkt"
+    ],
+    "web-import": [
+      "services/web-import"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+# Командам нельзя открывать (содержит готовую нарезку, ход работ или реализацию)
+/home/rustam/develop/simbioz_team/nastavnik-wt-course-concept/docs/audits/2026-11-23_course-pipeline-6/spec.md
+/home/rustam/develop/simbioz_team/nastavnik-wt-course-concept/docs/audits/2026-11-23_course-pipeline-8/spec.md
+/home/rustam/develop/simbioz_team/nastavnik-wt-course-concept/docs/audits/2026-11-24_course-pipeline-course-task/
+/home/rustam/develop/simbioz_team/nastavnik-wt-course-concept/docs/audits/2026-11-24_course-pipeline-n6/
+/home/rustam/develop/simbioz_team/nastavnik-wt-course-concept/docs/project/impl-plan-course-pipeline-concept.md
+docs/audits/2026-11-23_course-pipeline-6/spec.md, docs/audits/2026-11-23_course-pipeline-8/spec.md, docs/audits/2026-11-24_*, docs/project/impl-plan-course-pipeline-concept.md — в любом дереве и через git show
+/home/rustam/develop/simbioz_team/nastavnik-wt-trainer/specs/N-1-task-solutions/plan.md
+/home/rustam/develop/simbioz_team/nastavnik-wt-trainer/specs/N-1-task-solutions/plan-n1b.md
+docs/audits/2026-11-22_n1-task-solutions-acceptance.md
+docs/audits/2026-11-22_n1b-task-solution-card-acceptance.md
+docs/audits/2026-11-22_report-n1b-task-solution-card-T-2299.md
+git-история после базовых коммитов 06a0bbdf4 (фича 1), 053602900 (фича 2), 4ba293f13 (фича 3): git log/show/diff по более поздним коммитам
+ветки feature/course-pipeline-concept, feature/T-6*, feature/T-8*, feature/T-2264-*, feature/N-1-task-solutions, feature/N-1b-task-solution-card
+рабочее состояние деревьев (читать только базовый коммит): /home/rustam/develop/simbioz_team/nastavnik_stage_1, /home/rustam/develop/simbioz_team/nastavnik-wt-course-concept, /home/rustam/develop/simbioz_team/nastavnik-wt-n1, /home/rustam/develop/simbioz_team/nastavnik-wt-trainer
+/home/rustam/.claude/projects/-home-rustam-develop-simbioz-team-nastavnik-stage-1/
+задачи Narta T-2264, T-2268, T-2297, T-2299 и их подзадачи
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/decomp/baseline/
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/agents-f35619f5.tsv
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/agents-93268a53.tsv
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/agentsegs-f35619f5.tsv
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/agentsegs-93268a53.tsv
+/tmp/claude-1000/-home-rustam-develop-simbioz-team-muagba-pro/e280ef6f-cbe4-4a58-b39a-164383171093/scratchpad/work/

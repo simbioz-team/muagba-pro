@@ -1,0 +1,100 @@
+{
+  "description": "Карта ярусов модулей courses/ для check_module_boundaries.py. Источник — П-9 в docs/engineering/module-rules.md (v2.2). Модуль импортирует только модули своего яруса или ниже. Ярус -1 — общие помощники без продуктового смысла (`helpers`, T-1496): ниже нижнего ядра, поэтому не импортируют ничего из courses — ни пакеты, ни файлы ядра. Правится вместе с П-9. not_modules — каталоги вне проверки (тесты, миграции); consumers — каталоги-потребители верхнего уровня, проверяются наравне с гигантами (management-команды, П-11). app_modules — приложения вне courses под той же проверкой со своим ярусом в tiers (user_auth — ярус 1, вход; T-1614, решение владельца 02.11.2026): их прод-код сканируется, импорт из courses или другого приложения — П-9.",
+  "tiers": {
+    "-1": [
+      "helpers"
+    ],
+    "0": [
+      "domain_errors",
+      "rich_text"
+    ],
+    "1": [
+      "ml_transport",
+      "usage_ledger",
+      "usage_costs",
+      "course_price",
+      "billing",
+      "access_registry",
+      "roles",
+      "rule_engine",
+      "user_auth",
+      "task_solving"
+    ],
+    "2": [
+      "ukgs",
+      "mastery_compute",
+      "tkml",
+      "user_knowledge_graph",
+      "ksa_graph",
+      "graph_invariants",
+      "course_structure",
+      "system_graph",
+      "subject_areas",
+      "wording",
+      "descriptions",
+      "matching",
+      "understanding",
+      "saga",
+      "judge",
+      "feedback",
+      "statistic",
+      "methodology_params",
+      "course_goal",
+      "exam_codifier",
+      "exam_tasks",
+      "exam_bank_import",
+      "exam_solver",
+      "exam_answer_fetcher",
+      "task_solutions"
+    ],
+    "3": [
+      "track_manage",
+      "lesson",
+      "dialogue",
+      "gap_ingestion",
+      "gap_service",
+      "topic_content",
+      "structure_gen",
+      "task_classes",
+      "course_graph_editor",
+      "course_pipeline",
+      "publication",
+      "diagnostics",
+      "diagnostic_bank",
+      "learning_tasks",
+      "learning_task_solver",
+      "documents",
+      "parsing_v2",
+      "explorer",
+      "dataset_export",
+      "synthetic_ir",
+      "bug_report",
+      "exam_trainer",
+      "exam_methodologist_queue",
+      "exam_reference_fix"
+    ]
+  },
+  "future": [],
+  "core_tier0": [
+    "models",
+    "permissions",
+    "problem_details",
+    "concurrency",
+    "action_types"
+  ],
+  "not_modules": [
+    "migrations",
+    "tests"
+  ],
+  "consumers": [
+    "management"
+  ],
+  "other_apps": [
+    "user_auth",
+    "invites",
+    "system_core"
+  ],
+  "app_modules": [
+    "user_auth"
+  ]
+}

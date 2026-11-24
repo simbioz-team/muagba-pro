@@ -1,0 +1,8 @@
+services/django-api/courses/course_pipeline/gates/rules_stages.py
+services/django-api/courses/course_pipeline/tests/test_transfer_trap_rules.py
+services/django-api/courses/learning_tasks/answer_forms.py
+services/django-api/courses/learning_tasks/generation_marks.py
+services/django-api/courses/learning_tasks/tests/test_answer_form_fields.py
+services/django-api/courses/learning_tasks/tests/test_generation_marks.py
+services/django-api/courses/migrations/0293_learningtask_answer_form_transfer_trap.py
+services/django-api/courses/models.py

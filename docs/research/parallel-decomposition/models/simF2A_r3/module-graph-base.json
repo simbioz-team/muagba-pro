@@ -1,0 +1,3417 @@
+{
+ "description": "Граф импортов прод-кода django-api, собранный scripts/gen_module_map.py из check_module_boundaries.py. Руками не править: python3 scripts/gen_module_map.py.",
+ "units": {
+  "access_registry": {
+   "kind": "module",
+   "tier": 1
+  },
+  "app:invites": {
+   "kind": "app"
+  },
+  "billing": {
+   "kind": "module",
+   "tier": 1
+  },
+  "bug_report": {
+   "kind": "module",
+   "tier": 3
+  },
+  "course_goal": {
+   "kind": "module",
+   "tier": 2
+  },
+  "course_graph_editor": {
+   "kind": "module",
+   "tier": 3
+  },
+  "course_pipeline": {
+   "kind": "module",
+   "tier": 3
+  },
+  "course_price": {
+   "kind": "module",
+   "tier": 1
+  },
+  "course_structure": {
+   "kind": "module",
+   "tier": 2
+  },
+  "dataset_export": {
+   "kind": "module",
+   "tier": 3
+  },
+  "descriptions": {
+   "kind": "module",
+   "tier": 2
+  },
+  "diagnostic_bank": {
+   "kind": "module",
+   "tier": 3
+  },
+  "diagnostics": {
+   "kind": "module",
+   "tier": 3
+  },
+  "dialogue": {
+   "kind": "module",
+   "tier": 3
+  },
+  "documents": {
+   "kind": "module",
+   "tier": 3
+  },
+  "domain_errors": {
+   "kind": "module",
+   "tier": 0
+  },
+  "exam_answer_fetcher": {
+   "kind": "module",
+   "tier": 2
+  },
+  "exam_bank_import": {
+   "kind": "module",
+   "tier": 2
+  },
+  "exam_codifier": {
+   "kind": "module",
+   "tier": 2
+  },
+  "exam_methodologist_queue": {
+   "kind": "module",
+   "tier": 3
+  },
+  "exam_reference_fix": {
+   "kind": "module",
+   "tier": 3
+  },
+  "exam_solver": {
+   "kind": "module",
+   "tier": 2
+  },
+  "exam_tasks": {
+   "kind": "module",
+   "tier": 2
+  },
+  "exam_trainer": {
+   "kind": "module",
+   "tier": 3
+  },
+  "explorer": {
+   "kind": "module",
+   "tier": 3
+  },
+  "feedback": {
+   "kind": "module",
+   "tier": 2
+  },
+  "gap_ingestion": {
+   "kind": "module",
+   "tier": 3
+  },
+  "gap_service": {
+   "kind": "module",
+   "tier": 3
+  },
+  "graph_invariants": {
+   "kind": "module",
+   "tier": 2
+  },
+  "helpers": {
+   "kind": "module",
+   "tier": -1
+  },
+  "judge": {
+   "kind": "module",
+   "tier": 2
+  },
+  "ksa_graph": {
+   "kind": "module",
+   "tier": 2
+  },
+  "learning_task_solver": {
+   "kind": "module",
+   "tier": 3
+  },
+  "learning_tasks": {
+   "kind": "module",
+   "tier": 3
+  },
+  "lesson": {
+   "kind": "module",
+   "tier": 3
+  },
+  "mastery_compute": {
+   "kind": "module",
+   "tier": 2
+  },
+  "matching": {
+   "kind": "module",
+   "tier": 2
+  },
+  "methodology_params": {
+   "kind": "module",
+   "tier": 2
+  },
+  "ml_transport": {
+   "kind": "module",
+   "tier": 1
+  },
+  "parsing_v2": {
+   "kind": "module",
+   "tier": 3
+  },
+  "publication": {
+   "kind": "module",
+   "tier": 3
+  },
+  "rich_text": {
+   "kind": "module",
+   "tier": 0
+  },
+  "roles": {
+   "kind": "module",
+   "tier": 1
+  },
+  "root:_lt_import": {
+   "kind": "giant"
+  },
+  "root:action_types": {
+   "kind": "core"
+  },
+  "root:admin": {
+   "kind": "giant"
+  },
+  "root:admin_views": {
+   "kind": "giant"
+  },
+  "root:apps": {
+   "kind": "giant"
+  },
+  "root:concurrency": {
+   "kind": "core"
+  },
+  "root:db_extensions": {
+   "kind": "giant"
+  },
+  "root:demo_redeploy": {
+   "kind": "giant"
+  },
+  "root:graph_gateway": {
+   "kind": "giant"
+  },
+  "root:lt_import": {
+   "kind": "giant"
+  },
+  "root:management": {
+   "kind": "giant"
+  },
+  "root:models": {
+   "kind": "core"
+  },
+  "root:permissions": {
+   "kind": "core"
+  },
+  "root:problem_details": {
+   "kind": "core"
+  },
+  "root:serializers": {
+   "kind": "giant"
+  },
+  "root:services": {
+   "kind": "giant"
+  },
+  "root:services_brief_consistency": {
+   "kind": "giant"
+  },
+  "root:services_learning_tasks": {
+   "kind": "giant"
+  },
+  "root:services_lt_import": {
+   "kind": "giant"
+  },
+  "root:structure_gate": {
+   "kind": "giant"
+  },
+  "root:system_config_getters": {
+   "kind": "giant"
+  },
+  "root:system_graph_dedupe": {
+   "kind": "giant"
+  },
+  "root:tasks": {
+   "kind": "giant"
+  },
+  "root:urls": {
+   "kind": "giant"
+  },
+  "root:views": {
+   "kind": "giant"
+  },
+  "rule_engine": {
+   "kind": "module",
+   "tier": 1
+  },
+  "saga": {
+   "kind": "module",
+   "tier": 2
+  },
+  "statistic": {
+   "kind": "module",
+   "tier": 2
+  },
+  "structure_gen": {
+   "kind": "module",
+   "tier": 3
+  },
+  "subject_areas": {
+   "kind": "module",
+   "tier": 2
+  },
+  "synthetic_ir": {
+   "kind": "module",
+   "tier": 3
+  },
+  "system_graph": {
+   "kind": "module",
+   "tier": 2
+  },
+  "task_classes": {
+   "kind": "module",
+   "tier": 3
+  },
+  "task_solutions": {
+   "kind": "module",
+   "tier": 2
+  },
+  "task_solving": {
+   "kind": "module",
+   "tier": 1
+  },
+  "tkml": {
+   "kind": "module",
+   "tier": 2
+  },
+  "topic_content": {
+   "kind": "module",
+   "tier": 3
+  },
+  "track_manage": {
+   "kind": "module",
+   "tier": 3
+  },
+  "ukgs": {
+   "kind": "module",
+   "tier": 2
+  },
+  "understanding": {
+   "kind": "module",
+   "tier": 2
+  },
+  "usage_costs": {
+   "kind": "module",
+   "tier": 1
+  },
+  "usage_ledger": {
+   "kind": "module",
+   "tier": 1
+  },
+  "user_auth": {
+   "kind": "module",
+   "tier": 1
+  },
+  "user_knowledge_graph": {
+   "kind": "module",
+   "tier": 2
+  },
+  "wording": {
+   "kind": "module",
+   "tier": 2
+  }
+ },
+ "edges": [
+  {
+   "from": "access_registry",
+   "to": "course_price",
+   "places": 1
+  },
+  {
+   "from": "access_registry",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "access_registry",
+   "to": "root:models",
+   "places": 15
+  },
+  {
+   "from": "access_registry",
+   "to": "root:permissions",
+   "places": 1
+  },
+  {
+   "from": "access_registry",
+   "to": "usage_costs",
+   "places": 2,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "access_registry",
+   "to": "usage_ledger",
+   "places": 2
+  },
+  {
+   "from": "access_registry",
+   "to": "user_auth",
+   "places": 9
+  },
+  {
+   "from": "billing",
+   "to": "access_registry",
+   "places": 83,
+   "rules": [
+    "П-7",
+    "П-8"
+   ]
+  },
+  {
+   "from": "billing",
+   "to": "course_price",
+   "places": 2
+  },
+  {
+   "from": "billing",
+   "to": "ml_transport",
+   "places": 20,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "billing",
+   "to": "root:models",
+   "places": 12
+  },
+  {
+   "from": "billing",
+   "to": "usage_costs",
+   "places": 8,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "billing",
+   "to": "usage_ledger",
+   "places": 6
+  },
+  {
+   "from": "billing",
+   "to": "user_auth",
+   "places": 7
+  },
+  {
+   "from": "bug_report",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "bug_report",
+   "to": "saga",
+   "places": 1
+  },
+  {
+   "from": "bug_report",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "course_goal",
+   "to": "access_registry",
+   "places": 2
+  },
+  {
+   "from": "course_goal",
+   "to": "billing",
+   "places": 14
+  },
+  {
+   "from": "course_goal",
+   "to": "domain_errors",
+   "places": 2
+  },
+  {
+   "from": "course_goal",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "course_goal",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "course_goal",
+   "to": "ml_transport",
+   "places": 5
+  },
+  {
+   "from": "course_goal",
+   "to": "root:models",
+   "places": 11
+  },
+  {
+   "from": "course_goal",
+   "to": "saga",
+   "places": 2
+  },
+  {
+   "from": "course_goal",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "access_registry",
+   "places": 3
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "billing",
+   "places": 1
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "course_goal",
+   "places": 1
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "course_structure",
+   "places": 2
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "diagnostic_bank",
+   "places": 5
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "domain_errors",
+   "places": 4
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "graph_invariants",
+   "places": 3
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "ksa_graph",
+   "places": 2
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "matching",
+   "places": 4
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "root:concurrency",
+   "places": 3
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "saga",
+   "places": 2
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "task_classes",
+   "places": 9
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "topic_content",
+   "places": 4
+  },
+  {
+   "from": "course_graph_editor",
+   "to": "wording",
+   "places": 6
+  },
+  {
+   "from": "course_pipeline",
+   "to": "access_registry",
+   "places": 2
+  },
+  {
+   "from": "course_pipeline",
+   "to": "billing",
+   "places": 2
+  },
+  {
+   "from": "course_pipeline",
+   "to": "course_goal",
+   "places": 8
+  },
+  {
+   "from": "course_pipeline",
+   "to": "diagnostic_bank",
+   "places": 11
+  },
+  {
+   "from": "course_pipeline",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "course_pipeline",
+   "to": "graph_invariants",
+   "places": 2
+  },
+  {
+   "from": "course_pipeline",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "course_pipeline",
+   "to": "learning_tasks",
+   "places": 6
+  },
+  {
+   "from": "course_pipeline",
+   "to": "matching",
+   "places": 3
+  },
+  {
+   "from": "course_pipeline",
+   "to": "methodology_params",
+   "places": 14
+  },
+  {
+   "from": "course_pipeline",
+   "to": "publication",
+   "places": 4
+  },
+  {
+   "from": "course_pipeline",
+   "to": "rich_text",
+   "places": 1
+  },
+  {
+   "from": "course_pipeline",
+   "to": "root:models",
+   "places": 42
+  },
+  {
+   "from": "course_pipeline",
+   "to": "root:services_learning_tasks",
+   "places": 1,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "course_pipeline",
+   "to": "root:tasks",
+   "places": 1,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "course_pipeline",
+   "to": "saga",
+   "places": 27
+  },
+  {
+   "from": "course_pipeline",
+   "to": "structure_gen",
+   "places": 2
+  },
+  {
+   "from": "course_pipeline",
+   "to": "task_classes",
+   "places": 28
+  },
+  {
+   "from": "course_pipeline",
+   "to": "topic_content",
+   "places": 12
+  },
+  {
+   "from": "course_pipeline",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "course_structure",
+   "to": "graph_invariants",
+   "places": 8
+  },
+  {
+   "from": "course_structure",
+   "to": "root:models",
+   "places": 23
+  },
+  {
+   "from": "course_structure",
+   "to": "saga",
+   "places": 1
+  },
+  {
+   "from": "dataset_export",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "descriptions",
+   "to": "access_registry",
+   "places": 4
+  },
+  {
+   "from": "descriptions",
+   "to": "billing",
+   "places": 7
+  },
+  {
+   "from": "descriptions",
+   "to": "ksa_graph",
+   "places": 9
+  },
+  {
+   "from": "descriptions",
+   "to": "matching",
+   "places": 2
+  },
+  {
+   "from": "descriptions",
+   "to": "ml_transport",
+   "places": 6
+  },
+  {
+   "from": "descriptions",
+   "to": "root:models",
+   "places": 12
+  },
+  {
+   "from": "descriptions",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "descriptions",
+   "to": "wording",
+   "places": 11
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "billing",
+   "places": 12
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "course_structure",
+   "places": 1
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "domain_errors",
+   "places": 8
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "graph_invariants",
+   "places": 2
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "judge",
+   "places": 3
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "ksa_graph",
+   "places": 1
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "methodology_params",
+   "places": 6
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "ml_transport",
+   "places": 6
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "root:models",
+   "places": 15
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "saga",
+   "places": 12
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "topic_content",
+   "places": 4
+  },
+  {
+   "from": "diagnostic_bank",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "diagnostics",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "diagnostics",
+   "to": "billing",
+   "places": 8
+  },
+  {
+   "from": "diagnostics",
+   "to": "diagnostic_bank",
+   "places": 4
+  },
+  {
+   "from": "diagnostics",
+   "to": "domain_errors",
+   "places": 6
+  },
+  {
+   "from": "diagnostics",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "diagnostics",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "diagnostics",
+   "to": "ml_transport",
+   "places": 2
+  },
+  {
+   "from": "diagnostics",
+   "to": "root:models",
+   "places": 8
+  },
+  {
+   "from": "diagnostics",
+   "to": "tkml",
+   "places": 1
+  },
+  {
+   "from": "diagnostics",
+   "to": "ukgs",
+   "places": 3
+  },
+  {
+   "from": "diagnostics",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "dialogue",
+   "to": "billing",
+   "places": 11
+  },
+  {
+   "from": "dialogue",
+   "to": "domain_errors",
+   "places": 3
+  },
+  {
+   "from": "dialogue",
+   "to": "feedback",
+   "places": 3
+  },
+  {
+   "from": "dialogue",
+   "to": "gap_ingestion",
+   "places": 2,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "dialogue",
+   "to": "ksa_graph",
+   "places": 1
+  },
+  {
+   "from": "dialogue",
+   "to": "ml_transport",
+   "places": 13
+  },
+  {
+   "from": "dialogue",
+   "to": "root:action_types",
+   "places": 9
+  },
+  {
+   "from": "dialogue",
+   "to": "root:models",
+   "places": 24
+  },
+  {
+   "from": "dialogue",
+   "to": "rule_engine",
+   "places": 6
+  },
+  {
+   "from": "dialogue",
+   "to": "topic_content",
+   "places": 1
+  },
+  {
+   "from": "dialogue",
+   "to": "track_manage",
+   "places": 5
+  },
+  {
+   "from": "dialogue",
+   "to": "ukgs",
+   "places": 1
+  },
+  {
+   "from": "dialogue",
+   "to": "understanding",
+   "places": 3
+  },
+  {
+   "from": "documents",
+   "to": "access_registry",
+   "places": 5
+  },
+  {
+   "from": "documents",
+   "to": "billing",
+   "places": 6
+  },
+  {
+   "from": "documents",
+   "to": "course_structure",
+   "places": 1
+  },
+  {
+   "from": "documents",
+   "to": "domain_errors",
+   "places": 3
+  },
+  {
+   "from": "documents",
+   "to": "helpers",
+   "places": 4
+  },
+  {
+   "from": "documents",
+   "to": "ml_transport",
+   "places": 3
+  },
+  {
+   "from": "documents",
+   "to": "parsing_v2",
+   "places": 6
+  },
+  {
+   "from": "documents",
+   "to": "root:models",
+   "places": 5
+  },
+  {
+   "from": "documents",
+   "to": "user_auth",
+   "places": 3
+  },
+  {
+   "from": "exam_answer_fetcher",
+   "to": "exam_bank_import",
+   "places": 2
+  },
+  {
+   "from": "exam_answer_fetcher",
+   "to": "exam_codifier",
+   "places": 1
+  },
+  {
+   "from": "exam_answer_fetcher",
+   "to": "exam_solver",
+   "places": 1
+  },
+  {
+   "from": "exam_answer_fetcher",
+   "to": "exam_tasks",
+   "places": 1
+  },
+  {
+   "from": "exam_answer_fetcher",
+   "to": "task_solving",
+   "places": 3
+  },
+  {
+   "from": "exam_bank_import",
+   "to": "exam_codifier",
+   "places": 5
+  },
+  {
+   "from": "exam_bank_import",
+   "to": "exam_tasks",
+   "places": 2
+  },
+  {
+   "from": "exam_bank_import",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "exam_bank_import",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "exam_codifier",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "exam_codifier",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "exam_codifier",
+   "to": "root:models",
+   "places": 3
+  },
+  {
+   "from": "exam_codifier",
+   "to": "subject_areas",
+   "places": 1
+  },
+  {
+   "from": "exam_codifier",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "exam_codifier",
+   "to": "wording",
+   "places": 1
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "exam_answer_fetcher",
+   "places": 2
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "exam_codifier",
+   "places": 3
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "exam_solver",
+   "places": 3
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "exam_tasks",
+   "places": 4
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "exam_trainer",
+   "places": 2
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "helpers",
+   "places": 3
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "exam_methodologist_queue",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "exam_reference_fix",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "exam_reference_fix",
+   "to": "exam_methodologist_queue",
+   "places": 3
+  },
+  {
+   "from": "exam_reference_fix",
+   "to": "exam_tasks",
+   "places": 5
+  },
+  {
+   "from": "exam_reference_fix",
+   "to": "exam_trainer",
+   "places": 2
+  },
+  {
+   "from": "exam_solver",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "exam_solver",
+   "to": "billing",
+   "places": 1
+  },
+  {
+   "from": "exam_solver",
+   "to": "exam_codifier",
+   "places": 2
+  },
+  {
+   "from": "exam_solver",
+   "to": "exam_tasks",
+   "places": 8
+  },
+  {
+   "from": "exam_solver",
+   "to": "helpers",
+   "places": 3
+  },
+  {
+   "from": "exam_solver",
+   "to": "ml_transport",
+   "places": 6
+  },
+  {
+   "from": "exam_solver",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "exam_solver",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "exam_solver",
+   "to": "task_solutions",
+   "places": 8
+  },
+  {
+   "from": "exam_solver",
+   "to": "task_solving",
+   "places": 7
+  },
+  {
+   "from": "exam_solver",
+   "to": "usage_costs",
+   "places": 3
+  },
+  {
+   "from": "exam_solver",
+   "to": "usage_ledger",
+   "places": 1
+  },
+  {
+   "from": "exam_solver",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "exam_tasks",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "exam_tasks",
+   "to": "billing",
+   "places": 1
+  },
+  {
+   "from": "exam_tasks",
+   "to": "exam_codifier",
+   "places": 14
+  },
+  {
+   "from": "exam_tasks",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "exam_tasks",
+   "to": "ml_transport",
+   "places": 3
+  },
+  {
+   "from": "exam_tasks",
+   "to": "root:models",
+   "places": 4
+  },
+  {
+   "from": "exam_tasks",
+   "to": "task_solving",
+   "places": 1
+  },
+  {
+   "from": "exam_tasks",
+   "to": "usage_costs",
+   "places": 1
+  },
+  {
+   "from": "exam_tasks",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "exam_trainer",
+   "to": "exam_codifier",
+   "places": 8
+  },
+  {
+   "from": "exam_trainer",
+   "to": "exam_tasks",
+   "places": 2
+  },
+  {
+   "from": "exam_trainer",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "exam_trainer",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "exam_trainer",
+   "to": "task_solving",
+   "places": 1
+  },
+  {
+   "from": "exam_trainer",
+   "to": "ukgs",
+   "places": 3
+  },
+  {
+   "from": "exam_trainer",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "explorer",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "explorer",
+   "to": "ksa_graph",
+   "places": 10
+  },
+  {
+   "from": "explorer",
+   "to": "ml_transport",
+   "places": 18
+  },
+  {
+   "from": "explorer",
+   "to": "root:models",
+   "places": 19
+  },
+  {
+   "from": "explorer",
+   "to": "subject_areas",
+   "places": 1
+  },
+  {
+   "from": "explorer",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "explorer",
+   "to": "wording",
+   "places": 8
+  },
+  {
+   "from": "feedback",
+   "to": "access_registry",
+   "places": 2
+  },
+  {
+   "from": "feedback",
+   "to": "dataset_export",
+   "places": 1,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "feedback",
+   "to": "roles",
+   "places": 1
+  },
+  {
+   "from": "feedback",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "feedback",
+   "to": "usage_ledger",
+   "places": 1
+  },
+  {
+   "from": "feedback",
+   "to": "user_auth",
+   "places": 5
+  },
+  {
+   "from": "gap_ingestion",
+   "to": "dialogue",
+   "places": 1,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "gap_ingestion",
+   "to": "ml_transport",
+   "places": 3
+  },
+  {
+   "from": "gap_ingestion",
+   "to": "root:action_types",
+   "places": 1
+  },
+  {
+   "from": "gap_ingestion",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "gap_ingestion",
+   "to": "track_manage",
+   "places": 1
+  },
+  {
+   "from": "gap_service",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "graph_invariants",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "judge",
+   "to": "ml_transport",
+   "places": 3
+  },
+  {
+   "from": "judge",
+   "to": "rich_text",
+   "places": 1
+  },
+  {
+   "from": "judge",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "ksa_graph",
+   "to": "access_registry",
+   "places": 4
+  },
+  {
+   "from": "ksa_graph",
+   "to": "billing",
+   "places": 9
+  },
+  {
+   "from": "ksa_graph",
+   "to": "course_structure",
+   "places": 2
+  },
+  {
+   "from": "ksa_graph",
+   "to": "graph_invariants",
+   "places": 3
+  },
+  {
+   "from": "ksa_graph",
+   "to": "matching",
+   "places": 2,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "ksa_graph",
+   "to": "ml_transport",
+   "places": 11
+  },
+  {
+   "from": "ksa_graph",
+   "to": "root:models",
+   "places": 10
+  },
+  {
+   "from": "ksa_graph",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "ksa_graph",
+   "to": "wording",
+   "places": 11,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "billing",
+   "places": 12
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "course_goal",
+   "places": 1
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "helpers",
+   "places": 4
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "learning_tasks",
+   "places": 14
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "ml_transport",
+   "places": 7
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "root:models",
+   "places": 13
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "saga",
+   "places": 1
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "task_classes",
+   "places": 4
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "task_solutions",
+   "places": 14
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "task_solving",
+   "places": 6
+  },
+  {
+   "from": "learning_task_solver",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "learning_tasks",
+   "to": "billing",
+   "places": 4
+  },
+  {
+   "from": "learning_tasks",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "learning_tasks",
+   "to": "ml_transport",
+   "places": 1
+  },
+  {
+   "from": "learning_tasks",
+   "to": "root:models",
+   "places": 10
+  },
+  {
+   "from": "learning_tasks",
+   "to": "task_classes",
+   "places": 2
+  },
+  {
+   "from": "learning_tasks",
+   "to": "task_solutions",
+   "places": 2
+  },
+  {
+   "from": "learning_tasks",
+   "to": "task_solving",
+   "places": 3
+  },
+  {
+   "from": "lesson",
+   "to": "access_registry",
+   "places": 2
+  },
+  {
+   "from": "lesson",
+   "to": "billing",
+   "places": 18
+  },
+  {
+   "from": "lesson",
+   "to": "dialogue",
+   "places": 19
+  },
+  {
+   "from": "lesson",
+   "to": "documents",
+   "places": 2
+  },
+  {
+   "from": "lesson",
+   "to": "domain_errors",
+   "places": 3
+  },
+  {
+   "from": "lesson",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "lesson",
+   "to": "ml_transport",
+   "places": 6
+  },
+  {
+   "from": "lesson",
+   "to": "rich_text",
+   "places": 1
+  },
+  {
+   "from": "lesson",
+   "to": "root:models",
+   "places": 10
+  },
+  {
+   "from": "lesson",
+   "to": "tkml",
+   "places": 3
+  },
+  {
+   "from": "lesson",
+   "to": "topic_content",
+   "places": 7
+  },
+  {
+   "from": "lesson",
+   "to": "track_manage",
+   "places": 2
+  },
+  {
+   "from": "lesson",
+   "to": "ukgs",
+   "places": 7
+  },
+  {
+   "from": "lesson",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "mastery_compute",
+   "to": "ukgs",
+   "places": 7,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "matching",
+   "to": "access_registry",
+   "places": 6
+  },
+  {
+   "from": "matching",
+   "to": "billing",
+   "places": 1
+  },
+  {
+   "from": "matching",
+   "to": "course_structure",
+   "places": 2
+  },
+  {
+   "from": "matching",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "matching",
+   "to": "graph_invariants",
+   "places": 2
+  },
+  {
+   "from": "matching",
+   "to": "helpers",
+   "places": 2
+  },
+  {
+   "from": "matching",
+   "to": "ml_transport",
+   "places": 3
+  },
+  {
+   "from": "matching",
+   "to": "root:models",
+   "places": 14
+  },
+  {
+   "from": "matching",
+   "to": "saga",
+   "places": 3
+  },
+  {
+   "from": "matching",
+   "to": "subject_areas",
+   "places": 1
+  },
+  {
+   "from": "matching",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "matching",
+   "to": "wording",
+   "places": 2,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "methodology_params",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "methodology_params",
+   "to": "root:models",
+   "places": 5
+  },
+  {
+   "from": "methodology_params",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "methodology_params",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "ml_transport",
+   "to": "billing",
+   "places": 9,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "ml_transport",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "ml_transport",
+   "to": "usage_ledger",
+   "places": 2
+  },
+  {
+   "from": "parsing_v2",
+   "to": "domain_errors",
+   "places": 2
+  },
+  {
+   "from": "publication",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "publication",
+   "to": "billing",
+   "places": 3
+  },
+  {
+   "from": "publication",
+   "to": "helpers",
+   "places": 3
+  },
+  {
+   "from": "publication",
+   "to": "matching",
+   "places": 3
+  },
+  {
+   "from": "publication",
+   "to": "root:models",
+   "places": 18
+  },
+  {
+   "from": "publication",
+   "to": "saga",
+   "places": 6
+  },
+  {
+   "from": "publication",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "roles",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "learning_task_solver",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "learning_tasks",
+   "places": 2
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "parsing_v2",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "root:services",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:_lt_import",
+   "to": "task_classes",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "diagnostic_bank",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "parsing_v2",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "root:tasks",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "topic_content",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "track_manage",
+   "places": 1
+  },
+  {
+   "from": "root:admin",
+   "to": "ukgs",
+   "places": 3
+  },
+  {
+   "from": "root:admin",
+   "to": "usage_ledger",
+   "places": 1
+  },
+  {
+   "from": "root:admin_views",
+   "to": "root:tasks",
+   "places": 1
+  },
+  {
+   "from": "root:admin_views",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "access_registry",
+   "places": 6
+  },
+  {
+   "from": "root:apps",
+   "to": "billing",
+   "places": 8
+  },
+  {
+   "from": "root:apps",
+   "to": "bug_report",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "course_goal",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "course_graph_editor",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "course_pipeline",
+   "places": 7
+  },
+  {
+   "from": "root:apps",
+   "to": "course_price",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "course_structure",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "diagnostic_bank",
+   "places": 6
+  },
+  {
+   "from": "root:apps",
+   "to": "diagnostics",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "dialogue",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_answer_fetcher",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_bank_import",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_codifier",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_methodologist_queue",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_reference_fix",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_solver",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_tasks",
+   "places": 4
+  },
+  {
+   "from": "root:apps",
+   "to": "exam_trainer",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "feedback",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "learning_task_solver",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "lesson",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "matching",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "publication",
+   "places": 4
+  },
+  {
+   "from": "root:apps",
+   "to": "roles",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "root:db_extensions",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "root:services",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "root:services_brief_consistency",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "rule_engine",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "saga",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "statistic",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "structure_gen",
+   "places": 5
+  },
+  {
+   "from": "root:apps",
+   "to": "subject_areas",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "system_graph",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "task_classes",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "task_solutions",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "tkml",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "topic_content",
+   "places": 4
+  },
+  {
+   "from": "root:apps",
+   "to": "track_manage",
+   "places": 2
+  },
+  {
+   "from": "root:apps",
+   "to": "ukgs",
+   "places": 1
+  },
+  {
+   "from": "root:apps",
+   "to": "usage_costs",
+   "places": 3
+  },
+  {
+   "from": "root:apps",
+   "to": "usage_ledger",
+   "places": 2
+  },
+  {
+   "from": "root:concurrency",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "root:graph_gateway",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "learning_task_solver",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "ml_transport",
+   "places": 2
+  },
+  {
+   "from": "root:lt_import",
+   "to": "parsing_v2",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "root:services",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:lt_import",
+   "to": "task_classes",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "access_registry",
+   "places": 49,
+   "rules": [
+    "П-7"
+   ]
+  },
+  {
+   "from": "root:management",
+   "to": "billing",
+   "places": 43
+  },
+  {
+   "from": "root:management",
+   "to": "course_goal",
+   "places": 3
+  },
+  {
+   "from": "root:management",
+   "to": "course_pipeline",
+   "places": 5
+  },
+  {
+   "from": "root:management",
+   "to": "course_structure",
+   "places": 13
+  },
+  {
+   "from": "root:management",
+   "to": "dataset_export",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "descriptions",
+   "places": 10
+  },
+  {
+   "from": "root:management",
+   "to": "diagnostic_bank",
+   "places": 5
+  },
+  {
+   "from": "root:management",
+   "to": "diagnostics",
+   "places": 2
+  },
+  {
+   "from": "root:management",
+   "to": "documents",
+   "places": 6
+  },
+  {
+   "from": "root:management",
+   "to": "exam_answer_fetcher",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "exam_bank_import",
+   "places": 2
+  },
+  {
+   "from": "root:management",
+   "to": "exam_codifier",
+   "places": 10
+  },
+  {
+   "from": "root:management",
+   "to": "exam_reference_fix",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "exam_solver",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "exam_tasks",
+   "places": 2
+  },
+  {
+   "from": "root:management",
+   "to": "exam_trainer",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "explorer",
+   "places": 8
+  },
+  {
+   "from": "root:management",
+   "to": "feedback",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "gap_ingestion",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "graph_invariants",
+   "places": 6
+  },
+  {
+   "from": "root:management",
+   "to": "helpers",
+   "places": 4
+  },
+  {
+   "from": "root:management",
+   "to": "ksa_graph",
+   "places": 17
+  },
+  {
+   "from": "root:management",
+   "to": "learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "matching",
+   "places": 7
+  },
+  {
+   "from": "root:management",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "root:management",
+   "to": "ml_transport",
+   "places": 22
+  },
+  {
+   "from": "root:management",
+   "to": "parsing_v2",
+   "places": 5
+  },
+  {
+   "from": "root:management",
+   "to": "publication",
+   "places": 7
+  },
+  {
+   "from": "root:management",
+   "to": "root:models",
+   "places": 77
+  },
+  {
+   "from": "root:management",
+   "to": "root:services",
+   "places": 4
+  },
+  {
+   "from": "root:management",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "saga",
+   "places": 15
+  },
+  {
+   "from": "root:management",
+   "to": "structure_gen",
+   "places": 3
+  },
+  {
+   "from": "root:management",
+   "to": "synthetic_ir",
+   "places": 1
+  },
+  {
+   "from": "root:management",
+   "to": "system_graph",
+   "places": 5
+  },
+  {
+   "from": "root:management",
+   "to": "task_classes",
+   "places": 6
+  },
+  {
+   "from": "root:management",
+   "to": "tkml",
+   "places": 3
+  },
+  {
+   "from": "root:management",
+   "to": "topic_content",
+   "places": 11
+  },
+  {
+   "from": "root:management",
+   "to": "track_manage",
+   "places": 8
+  },
+  {
+   "from": "root:management",
+   "to": "ukgs",
+   "places": 7
+  },
+  {
+   "from": "root:management",
+   "to": "usage_costs",
+   "places": 17
+  },
+  {
+   "from": "root:management",
+   "to": "usage_ledger",
+   "places": 6
+  },
+  {
+   "from": "root:management",
+   "to": "user_auth",
+   "places": 7
+  },
+  {
+   "from": "root:management",
+   "to": "wording",
+   "places": 7
+  },
+  {
+   "from": "root:models",
+   "to": "ksa_graph",
+   "places": 2,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "root:serializers",
+   "to": "course_pipeline",
+   "places": 1
+  },
+  {
+   "from": "root:serializers",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "root:serializers",
+   "to": "subject_areas",
+   "places": 2
+  },
+  {
+   "from": "root:services",
+   "to": "access_registry",
+   "places": 3
+  },
+  {
+   "from": "root:services",
+   "to": "course_goal",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "course_pipeline",
+   "places": 2
+  },
+  {
+   "from": "root:services",
+   "to": "course_structure",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "methodology_params",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "root:services",
+   "to": "saga",
+   "places": 4
+  },
+  {
+   "from": "root:services",
+   "to": "subject_areas",
+   "places": 5
+  },
+  {
+   "from": "root:services",
+   "to": "system_graph",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "task_classes",
+   "places": 1
+  },
+  {
+   "from": "root:services",
+   "to": "topic_content",
+   "places": 3
+  },
+  {
+   "from": "root:services",
+   "to": "track_manage",
+   "places": 1
+  },
+  {
+   "from": "root:services_brief_consistency",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "billing",
+   "places": 3
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "course_pipeline",
+   "places": 1
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "judge",
+   "places": 1
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "learning_task_solver",
+   "places": 4
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "learning_tasks",
+   "places": 8
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "ml_transport",
+   "places": 2
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "task_classes",
+   "places": 2
+  },
+  {
+   "from": "root:services_learning_tasks",
+   "to": "topic_content",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "billing",
+   "places": 3
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "documents",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "ml_transport",
+   "places": 2
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "root:lt_import",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "root:services",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "structure_gen",
+   "places": 1
+  },
+  {
+   "from": "root:services_lt_import",
+   "to": "task_classes",
+   "places": 1
+  },
+  {
+   "from": "root:structure_gate",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "root:system_config_getters",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "root:system_graph_dedupe",
+   "to": "system_graph",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "billing",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "course_pipeline",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "dialogue",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "domain_errors",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "feedback",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "learning_task_solver",
+   "places": 2
+  },
+  {
+   "from": "root:tasks",
+   "to": "learning_tasks",
+   "places": 4
+  },
+  {
+   "from": "root:tasks",
+   "to": "matching",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "root:demo_redeploy",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "root:models",
+   "places": 6
+  },
+  {
+   "from": "root:tasks",
+   "to": "root:services",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "root:services_lt_import",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "saga",
+   "places": 8
+  },
+  {
+   "from": "root:tasks",
+   "to": "structure_gen",
+   "places": 2
+  },
+  {
+   "from": "root:tasks",
+   "to": "task_classes",
+   "places": 1
+  },
+  {
+   "from": "root:tasks",
+   "to": "usage_ledger",
+   "places": 1
+  },
+  {
+   "from": "root:urls",
+   "to": "billing",
+   "places": 4
+  },
+  {
+   "from": "root:urls",
+   "to": "root:admin_views",
+   "places": 1
+  },
+  {
+   "from": "root:urls",
+   "to": "root:views",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "access_registry",
+   "places": 4
+  },
+  {
+   "from": "root:views",
+   "to": "billing",
+   "places": 2
+  },
+  {
+   "from": "root:views",
+   "to": "course_pipeline",
+   "places": 3
+  },
+  {
+   "from": "root:views",
+   "to": "documents",
+   "places": 3
+  },
+  {
+   "from": "root:views",
+   "to": "helpers",
+   "places": 4
+  },
+  {
+   "from": "root:views",
+   "to": "root:_lt_import",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "root:concurrency",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "root:models",
+   "places": 4
+  },
+  {
+   "from": "root:views",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "root:serializers",
+   "places": 2
+  },
+  {
+   "from": "root:views",
+   "to": "root:services",
+   "places": 3
+  },
+  {
+   "from": "root:views",
+   "to": "root:services_brief_consistency",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "root:services_learning_tasks",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "root:tasks",
+   "places": 2
+  },
+  {
+   "from": "root:views",
+   "to": "saga",
+   "places": 2
+  },
+  {
+   "from": "root:views",
+   "to": "subject_areas",
+   "places": 3
+  },
+  {
+   "from": "root:views",
+   "to": "system_graph",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "topic_content",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "usage_ledger",
+   "places": 1
+  },
+  {
+   "from": "root:views",
+   "to": "user_auth",
+   "places": 4
+  },
+  {
+   "from": "rule_engine",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "saga",
+   "to": "access_registry",
+   "places": 8
+  },
+  {
+   "from": "saga",
+   "to": "root:models",
+   "places": 28
+  },
+  {
+   "from": "saga",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "statistic",
+   "to": "feedback",
+   "places": 2
+  },
+  {
+   "from": "statistic",
+   "to": "root:models",
+   "places": 2
+  },
+  {
+   "from": "statistic",
+   "to": "ukgs",
+   "places": 1,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "statistic",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "structure_gen",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "structure_gen",
+   "to": "billing",
+   "places": 14
+  },
+  {
+   "from": "structure_gen",
+   "to": "course_goal",
+   "places": 14
+  },
+  {
+   "from": "structure_gen",
+   "to": "course_structure",
+   "places": 5
+  },
+  {
+   "from": "structure_gen",
+   "to": "documents",
+   "places": 4
+  },
+  {
+   "from": "structure_gen",
+   "to": "domain_errors",
+   "places": 5
+  },
+  {
+   "from": "structure_gen",
+   "to": "graph_invariants",
+   "places": 9
+  },
+  {
+   "from": "structure_gen",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "structure_gen",
+   "to": "ksa_graph",
+   "places": 2
+  },
+  {
+   "from": "structure_gen",
+   "to": "matching",
+   "places": 6
+  },
+  {
+   "from": "structure_gen",
+   "to": "methodology_params",
+   "places": 2
+  },
+  {
+   "from": "structure_gen",
+   "to": "ml_transport",
+   "places": 5
+  },
+  {
+   "from": "structure_gen",
+   "to": "root:models",
+   "places": 24
+  },
+  {
+   "from": "structure_gen",
+   "to": "saga",
+   "places": 10
+  },
+  {
+   "from": "structure_gen",
+   "to": "subject_areas",
+   "places": 1
+  },
+  {
+   "from": "structure_gen",
+   "to": "system_graph",
+   "places": 3
+  },
+  {
+   "from": "structure_gen",
+   "to": "topic_content",
+   "places": 2
+  },
+  {
+   "from": "structure_gen",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "structure_gen",
+   "to": "wording",
+   "places": 6
+  },
+  {
+   "from": "subject_areas",
+   "to": "access_registry",
+   "places": 2
+  },
+  {
+   "from": "subject_areas",
+   "to": "course_goal",
+   "places": 2
+  },
+  {
+   "from": "subject_areas",
+   "to": "helpers",
+   "places": 3
+  },
+  {
+   "from": "subject_areas",
+   "to": "root:models",
+   "places": 8
+  },
+  {
+   "from": "subject_areas",
+   "to": "ukgs",
+   "places": 2
+  },
+  {
+   "from": "subject_areas",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "synthetic_ir",
+   "to": "dataset_export",
+   "places": 4
+  },
+  {
+   "from": "synthetic_ir",
+   "to": "mastery_compute",
+   "places": 2
+  },
+  {
+   "from": "synthetic_ir",
+   "to": "root:models",
+   "places": 3
+  },
+  {
+   "from": "system_graph",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "system_graph",
+   "to": "course_goal",
+   "places": 2
+  },
+  {
+   "from": "system_graph",
+   "to": "domain_errors",
+   "places": 3
+  },
+  {
+   "from": "system_graph",
+   "to": "graph_invariants",
+   "places": 2
+  },
+  {
+   "from": "system_graph",
+   "to": "helpers",
+   "places": 10
+  },
+  {
+   "from": "system_graph",
+   "to": "matching",
+   "places": 2
+  },
+  {
+   "from": "system_graph",
+   "to": "root:models",
+   "places": 12
+  },
+  {
+   "from": "system_graph",
+   "to": "subject_areas",
+   "places": 3
+  },
+  {
+   "from": "system_graph",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "system_graph",
+   "to": "wording",
+   "places": 4
+  },
+  {
+   "from": "task_classes",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "task_classes",
+   "to": "billing",
+   "places": 14
+  },
+  {
+   "from": "task_classes",
+   "to": "course_goal",
+   "places": 2
+  },
+  {
+   "from": "task_classes",
+   "to": "course_structure",
+   "places": 6
+  },
+  {
+   "from": "task_classes",
+   "to": "documents",
+   "places": 3
+  },
+  {
+   "from": "task_classes",
+   "to": "domain_errors",
+   "places": 5
+  },
+  {
+   "from": "task_classes",
+   "to": "graph_invariants",
+   "places": 11
+  },
+  {
+   "from": "task_classes",
+   "to": "ksa_graph",
+   "places": 4
+  },
+  {
+   "from": "task_classes",
+   "to": "methodology_params",
+   "places": 4
+  },
+  {
+   "from": "task_classes",
+   "to": "ml_transport",
+   "places": 1
+  },
+  {
+   "from": "task_classes",
+   "to": "root:models",
+   "places": 32
+  },
+  {
+   "from": "task_classes",
+   "to": "saga",
+   "places": 2
+  },
+  {
+   "from": "task_classes",
+   "to": "structure_gen",
+   "places": 17
+  },
+  {
+   "from": "task_classes",
+   "to": "topic_content",
+   "places": 10
+  },
+  {
+   "from": "task_classes",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "task_classes",
+   "to": "wording",
+   "places": 2
+  },
+  {
+   "from": "task_solutions",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "task_solutions",
+   "to": "task_solving",
+   "places": 2
+  },
+  {
+   "from": "tkml",
+   "to": "root:models",
+   "places": 4
+  },
+  {
+   "from": "topic_content",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "topic_content",
+   "to": "billing",
+   "places": 24
+  },
+  {
+   "from": "topic_content",
+   "to": "course_structure",
+   "places": 2
+  },
+  {
+   "from": "topic_content",
+   "to": "documents",
+   "places": 4
+  },
+  {
+   "from": "topic_content",
+   "to": "domain_errors",
+   "places": 7
+  },
+  {
+   "from": "topic_content",
+   "to": "graph_invariants",
+   "places": 3
+  },
+  {
+   "from": "topic_content",
+   "to": "helpers",
+   "places": 5
+  },
+  {
+   "from": "topic_content",
+   "to": "judge",
+   "places": 1
+  },
+  {
+   "from": "topic_content",
+   "to": "ksa_graph",
+   "places": 8
+  },
+  {
+   "from": "topic_content",
+   "to": "ml_transport",
+   "places": 12
+  },
+  {
+   "from": "topic_content",
+   "to": "parsing_v2",
+   "places": 2
+  },
+  {
+   "from": "topic_content",
+   "to": "root:models",
+   "places": 26
+  },
+  {
+   "from": "topic_content",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "topic_content",
+   "to": "saga",
+   "places": 17
+  },
+  {
+   "from": "topic_content",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "track_manage",
+   "to": "access_registry",
+   "places": 21
+  },
+  {
+   "from": "track_manage",
+   "to": "billing",
+   "places": 21
+  },
+  {
+   "from": "track_manage",
+   "to": "diagnostics",
+   "places": 2
+  },
+  {
+   "from": "track_manage",
+   "to": "domain_errors",
+   "places": 6
+  },
+  {
+   "from": "track_manage",
+   "to": "gap_service",
+   "places": 1
+  },
+  {
+   "from": "track_manage",
+   "to": "graph_invariants",
+   "places": 2
+  },
+  {
+   "from": "track_manage",
+   "to": "helpers",
+   "places": 3
+  },
+  {
+   "from": "track_manage",
+   "to": "mastery_compute",
+   "places": 1
+  },
+  {
+   "from": "track_manage",
+   "to": "ml_transport",
+   "places": 2
+  },
+  {
+   "from": "track_manage",
+   "to": "root:models",
+   "places": 33
+  },
+  {
+   "from": "track_manage",
+   "to": "root:permissions",
+   "places": 2
+  },
+  {
+   "from": "track_manage",
+   "to": "root:problem_details",
+   "places": 1
+  },
+  {
+   "from": "track_manage",
+   "to": "tkml",
+   "places": 5
+  },
+  {
+   "from": "track_manage",
+   "to": "topic_content",
+   "places": 5
+  },
+  {
+   "from": "track_manage",
+   "to": "ukgs",
+   "places": 11
+  },
+  {
+   "from": "track_manage",
+   "to": "user_auth",
+   "places": 2
+  },
+  {
+   "from": "ukgs",
+   "to": "feedback",
+   "places": 1
+  },
+  {
+   "from": "ukgs",
+   "to": "graph_invariants",
+   "places": 1
+  },
+  {
+   "from": "ukgs",
+   "to": "mastery_compute",
+   "places": 4,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "ukgs",
+   "to": "root:models",
+   "places": 10
+  },
+  {
+   "from": "ukgs",
+   "to": "statistic",
+   "places": 1,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "ukgs",
+   "to": "user_auth",
+   "places": 5
+  },
+  {
+   "from": "understanding",
+   "to": "wording",
+   "places": 1
+  },
+  {
+   "from": "usage_costs",
+   "to": "billing",
+   "places": 1,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "usage_costs",
+   "to": "ml_transport",
+   "places": 2,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "usage_costs",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "usage_costs",
+   "to": "usage_ledger",
+   "places": 3
+  },
+  {
+   "from": "usage_ledger",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "user_auth",
+   "to": "access_registry",
+   "places": 2,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "user_auth",
+   "to": "app:invites",
+   "places": 2,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "user_auth",
+   "to": "statistic",
+   "places": 1,
+   "rules": [
+    "П-9"
+   ]
+  },
+  {
+   "from": "user_knowledge_graph",
+   "to": "helpers",
+   "places": 1
+  },
+  {
+   "from": "user_knowledge_graph",
+   "to": "root:models",
+   "places": 1
+  },
+  {
+   "from": "user_knowledge_graph",
+   "to": "ukgs",
+   "places": 1
+  },
+  {
+   "from": "user_knowledge_graph",
+   "to": "user_auth",
+   "places": 1
+  },
+  {
+   "from": "wording",
+   "to": "access_registry",
+   "places": 1
+  },
+  {
+   "from": "wording",
+   "to": "ksa_graph",
+   "places": 3,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "wording",
+   "to": "matching",
+   "places": 1,
+   "rules": [
+    "П-8"
+   ]
+  },
+  {
+   "from": "wording",
+   "to": "root:models",
+   "places": 12
+  }
+ ]
+}
