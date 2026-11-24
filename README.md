@@ -294,6 +294,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_pairs.py" merge <ветка1> <ве�
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_pairs.py" land <ветка фичи> <ветка>... [--dry-run]
 ```
 
+Без подтверждения человека — две обёртки каркаса с постоянным путём
+(разрешения в `.claude/settings.json`, файлы доставляет синк):
+`./.claude/push-branch` пушит текущую ветку сессии в origin (не main,
+master, develop и не основную ветку origin, без `--force`), а
+`./.claude/land develop <ветки>` — `land --require-green`: вливает только
+ветки, зелёные по проверкам проекта (`.claude/merge-check <коммит>`, если
+проект его завёл, иначе гейт сдачи), только `--ff-only`, и не в main.
+
 **Коды ответа** — `.claude/check-codes.py`, файл базы в каждом проекте
 (ADR-0019). Сетевые ответы — класс по стандарту транспорта плюс код события
 из реестра (JSON, `.claude/response-codes.json` называет реестры и шаблоны

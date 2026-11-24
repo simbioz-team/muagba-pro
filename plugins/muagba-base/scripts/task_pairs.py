@@ -9,7 +9,10 @@
 ревью, по очереди `--ff-only`; обогнанную — rebase в её дереве и следом.
 Конфликт — ветка не тронута и уходит в доработку, остальные вливаются.
 В конце — нужен ли один прогон проверки (был rebase) или зелёный коммит
-ревьюера и есть влитое. На 65 задачах фичи координатор делал ~265 ходов
+ревьюера и есть влитое. `--require-green` (так зовёт `./.claude/land`,
+разрешённая без подтверждения): вливается только зелёная по проверкам
+проекта ветка, только `--ff-only`, без rebase, и не в main/master/основную
+ветку origin. На 65 задачах фичи координатор делал ~265 ходов
 вливания подряд, и при 4 исполнителях работали 2.0–2.2 (модель
 исследования разложения 24.11).
 
@@ -54,6 +57,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -246,7 +250,33 @@ def simulate(root: Path, target: str, branches: list[str]) -> tuple[int, list[st
     return (1 if failed else 0), out
 
 
-def land(root: Path, target: str, branches: list[str], dry: bool) -> tuple[int, list[str]]:
+PROTECTED = ("main", "master")
+
+
+def green(root: Path, sha: str) -> tuple[bool, str]:
+    """Зелена ли ветка по проверкам, заданным проектом.
+
+    `.claude/merge-check` проекта (исполняемый, получает коммит; 0 —
+    зелено) — например, ответ CI по коммиту. Нет его — список зелёных
+    деревьев гейта: дерево коммита прошло проверку сдачи (SubagentStop).
+    """
+    mc = root / ".claude" / "merge-check"
+    if mc.is_file() and os.access(mc, os.X_OK):
+        r = subprocess.run([str(mc), sha], cwd=root, capture_output=True, text=True)
+        why = (r.stdout + r.stderr).strip().splitlines()
+        return r.returncode == 0, f".claude/merge-check: {why[-1] if why else r.returncode}"
+    tree = git(root, "rev-parse", f"{sha}^{{tree}}").stdout.strip()
+    common = git(root, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+    try:
+        rows = Path(common, "muagba-gate-green").read_text().splitlines()
+    except OSError:
+        rows = []
+    ok = any(r.split()[:2] == [tree, "SubagentStop"] for r in rows)
+    return ok, "гейт сдачи: " + ("дерево зелёное" if ok else "дерево не проверено зелёным")
+
+
+def land(root: Path, target: str, branches: list[str], dry: bool,
+         require_green: bool = False) -> tuple[int, list[str]]:
     """Влить прошедшие ревью ветки в target по очереди, только --ff-only.
 
     Ветка, которую target уже обогнал, перебазируется в своём дереве (или
@@ -258,6 +288,10 @@ def land(root: Path, target: str, branches: list[str], dry: bool) -> tuple[int, 
     home = worktree_of(root, target)
     if home and git(home, "status", "--porcelain", "--untracked-files=no").stdout.strip():
         return 2, [f"в дереве {target} ({home}) незакоммиченные правки — вливать некуда"]
+    if require_green:
+        head = git(root, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD").stdout.strip()
+        if target in PROTECTED or (head and head.split("/", 1)[-1] == target):
+            return 2, [f"{target} — основная ветка: вливание в неё без человека не делается"]
     out, landed, rebased, failed = [], [], [], []
     if dry:
         return simulate(root, target, branches)
@@ -266,6 +300,13 @@ def land(root: Path, target: str, branches: list[str], dry: bool) -> tuple[int, 
             out.append(f"{b}: нет такой ветки"); failed.append(b); continue
         if git(root, "merge-base", "--is-ancestor", b, target).returncode == 0:
             out.append(f"{b}: уже в {target}"); continue
+        if require_green:
+            ok, why = green(root, git(root, "rev-parse", b).stdout.strip())
+            if not ok:
+                out.append(f"{b}: не зелёная ({why}) — не вливаю"); failed.append(b); continue
+            if git(root, "merge-base", "--is-ancestor", target, b).returncode != 0:
+                out.append(f"{b}: {target} ушла вперёд — нужен rebase и проверка заново (доработка), не вливаю")
+                failed.append(b); continue
         if git(root, "merge-base", "--is-ancestor", target, b).returncode != 0:
             r = git(root, "merge-tree", "--write-tree", "--name-only", target, b)
             if r.returncode == 1:
@@ -318,8 +359,9 @@ def main() -> int:
         ap.add_argument("branches", nargs="+")
         ap.add_argument("--root", default=".")
         ap.add_argument("--dry-run", action="store_true")
+        ap.add_argument("--require-green", action="store_true")
         o = ap.parse_args(sys.argv[2:])
-        code, lines = land(Path(o.root), o.target, o.branches, o.dry_run)
+        code, lines = land(Path(o.root), o.target, o.branches, o.dry_run, o.require_green)
         print("\n".join(lines))
         return code
     if sys.argv[1:2] == ["merge"]:

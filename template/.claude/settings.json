@@ -4,6 +4,8 @@
     "allow": [
       "Bash(./.claude/check.sh)",
       "Bash(./.claude/night-switch *)",
+      "Bash(./.claude/push-branch)",
+      "Bash(./.claude/land *)",
       "Bash(git status *)",
       "Bash(git diff *)",
       "Bash(git log *)",

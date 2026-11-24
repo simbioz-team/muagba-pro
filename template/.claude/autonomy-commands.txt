@@ -12,3 +12,5 @@ git worktree list
 git worktree remove .claude/worktrees/<дерево>
 git branch -d <ветка-дерева>
 git worktree prune
+./.claude/push-branch
+./.claude/land develop <ветка>

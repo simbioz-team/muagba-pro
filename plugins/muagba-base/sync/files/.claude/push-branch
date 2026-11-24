@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Пуш ветки сессии в origin — без подтверждения человека (разрешение
+# `Bash(./.claude/push-branch)` в .claude/settings.json).
+#   ./.claude/push-branch   — запушить текущую ветку: git push -u origin <ветка>
+#
+# Нарочно без аргументов: пушится только то, на чём стоит сессия, и только
+# в ветку того же имени. Основную ветку (main, master, develop, основная у
+# origin) не пушит — это вливание, а не пуш своей ветки: его делает
+# ./.claude/land или человек. Без --force: переписывать опубликованное —
+# решение человека.
+set -uo pipefail
+[ $# -eq 0 ] || { echo "push-branch: аргументов нет — пушится текущая ветка" >&2; exit 2; }
+BR=$(git symbolic-ref -q --short HEAD) || { echo "push-branch: HEAD не на ветке" >&2; exit 2; }
+DEF=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null); DEF=${DEF#origin/}
+case "$BR" in
+  main|master|develop|"$DEF")
+    echo "push-branch: $BR — общая ветка, её пушит вливание или человек" >&2; exit 2 ;;
+esac
+exec git push -u origin "$BR"

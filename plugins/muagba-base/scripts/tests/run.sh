@@ -1927,6 +1927,34 @@ python3 "$SCRIPTS/task_pairs.py" land feat ld --root "$LD" >/dev/null 2>&1; [ $?
   || fail "land: грязное дерево фичи не остановило" ""
 git -C "$LD" worktree remove "$LD-wtb"; rm -rf "$LD" "$LD-wtb"
 
+# --- land --require-green (./.claude/land) и ./.claude/push-branch ----------
+# Без подтверждения человека вливается только зелёное по проверкам проекта.
+LG=$(mktemp -d); git -C "$LG" init -q -b main; echo base > "$LG/f"; git -C "$LG" add -A; lc "$LG" base
+git -C "$LG" switch -q -c develop
+for b in g r; do git -C "$LG" switch -q -c "w$b" develop; echo "$b" > "$LG/$b"; git -C "$LG" add -A; lc "$LG" "$b"; done
+git -C "$LG" switch -q develop
+echo "$(git -C "$LG" rev-parse wg^{tree}) SubagentStop 1" > "$LG/.git/muagba-gate-green"
+lg() { python3 "$SCRIPTS/task_pairs.py" land "$@" --require-green --root "$LG" 2>&1; }
+OUT=$(lg develop wg wr); CODE=$?
+[ $CODE = 1 ] && printf '%s' "$OUT" | grep -q 'wg: влита' && printf '%s' "$OUT" | grep -q 'wr: не зелёная' \
+  || fail "land --require-green: зелёная/не зелёная не различены" "$CODE $OUT"
+git -C "$LG" cat-file -e develop:r 2>/dev/null && fail "land --require-green: влита не зелёная ветка" "$OUT"
+echo "$(git -C "$LG" rev-parse wr^{tree}) SubagentStop 1" >> "$LG/.git/muagba-gate-green"
+{ lg develop wr || true; } | grep -q 'нужен rebase' || fail "land --require-green: обогнанную перебазировал сам" "$(lg develop wr)"
+printf '#!/bin/sh\necho "CI красный"; exit 1\n' > "$LG/.claude-mc"; mkdir -p "$LG/.claude"; mv "$LG/.claude-mc" "$LG/.claude/merge-check"; chmod +x "$LG/.claude/merge-check"
+git -C "$LG" switch -q -c wc develop; echo c > "$LG/c"; git -C "$LG" add c; lc "$LG" c; git -C "$LG" switch -q develop
+echo "$(git -C "$LG" rev-parse wc^{tree}) SubagentStop 1" >> "$LG/.git/muagba-gate-green"
+{ lg develop wc || true; } | grep -q 'merge-check: CI красный' || fail "land --require-green: .claude/merge-check проекта не спрошен" "$(lg develop wc)"
+OUT=$(lg main wg); [ $? = 2 ] && printf '%s' "$OUT" | grep -q 'основная ветка' || fail "land --require-green: влил в main" "$OUT"
+# push-branch: своя ветка уходит, общая — нет.
+PB=$(mktemp -d); git init -q --bare "$PB/o.git"; git -C "$LG" remote add origin "$PB/o.git"
+cp "$(dirname "$SCRIPTS")/sync/files/.claude/push-branch" "$PB/pb"
+( cd "$LG" && git switch -q wg && bash "$PB/pb" >/dev/null 2>&1 ) || fail "push-branch: своя ветка не запушена" ""
+git -C "$PB/o.git" rev-parse -q --verify wg >/dev/null || fail "push-branch: ветки нет в origin" ""
+( cd "$LG" && git switch -q develop && bash "$PB/pb" >/dev/null 2>&1 ); [ $? = 2 ] || fail "push-branch: запушил develop" ""
+( cd "$LG" && git switch -q wg && bash "$PB/pb" --force >/dev/null 2>&1 ); [ $? = 2 ] || fail "push-branch: принял аргументы" ""
+rm -rf "$LG" "$PB"
+
 # --- version_check: загружена та версия, что выпущена -----------------------
 VC=$(mktemp -d); mkdir -p "$VC/home" "$VC/cache/p/1.0.0/.claude-plugin" "$VC/mp/.claude-plugin" "$VC/mp/plugins/p/.claude-plugin"
 echo '{"name":"p","version":"1.0.0"}' > "$VC/cache/p/1.0.0/.claude-plugin/plugin.json"
