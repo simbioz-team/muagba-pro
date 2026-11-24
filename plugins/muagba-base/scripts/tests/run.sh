@@ -1897,6 +1897,36 @@ git -C "$TP" switch -q -c tc main; printf 'c\n' > "$TP/own_c.py"; git -C "$TP" a
 python3 "$SCRIPTS/task_pairs.py" merge ta tc --root "$TP" >/dev/null 2>&1 || fail "task_pairs merge: чистое слияние сочтено конфликтом" ""
 rm -rf "$TP"
 
+# --- task_pairs land: вливание пачкой вместо ходов координатора --------------
+LD=$(mktemp -d); git -C "$LD" init -q -b main
+lc() { git -C "$1" -c user.name=t -c user.email=t@t commit -qm "$2"; }
+echo base > "$LD/shared.py"; git -C "$LD" add -A; lc "$LD" base; git -C "$LD" switch -q -c feat
+for b in a b c d; do git -C "$LD" switch -q -c "l$b" feat; echo "$b" > "$LD/own_$b.py"
+  case $b in c|d) echo "$b" > "$LD/shared.py";; esac; git -C "$LD" add -A; lc "$LD" "$b"; done
+git -C "$LD" switch -q feat; git -C "$LD" worktree add -q "$LD-wtb" lb
+BEFORE=$(git -C "$LD" rev-parse feat); BD=$(git -C "$LD" rev-parse ld)
+ld() { python3 "$SCRIPTS/task_pairs.py" land feat la lb lc ld --root "$LD" "$@" 2>&1; }
+OUT=$(ld --dry-run); CODE=$?
+[ $CODE = 1 ] && printf '%s' "$OUT" | grep -q 'ld: конфликт в shared.py' \
+  && printf '%s' "$OUT" | grep -q 'lb: перебазируется' \
+  || fail "land --dry-run: план не учёл уже влитое" "$CODE $OUT"
+[ "$(git -C "$LD" rev-parse feat)" = "$BEFORE" ] || fail "land --dry-run: ветка фичи сдвинута" ""
+OUT=$(ld); CODE=$?
+[ $CODE = 1 ] || fail "land: конфликт не дал код 1" "$CODE $OUT"
+printf '%s' "$OUT" | grep -q 'lb: влита после rebase' || fail "land: обогнанная ветка не перебазирована" "$OUT"
+printf '%s' "$OUT" | grep -q 'один прогон проверки' || fail "land: после rebase не сказано про прогон" "$OUT"
+for f in own_a.py own_b.py own_c.py; do git -C "$LD" cat-file -e "feat:$f" 2>/dev/null || fail "land: $f не влит" "$OUT"; done
+git -C "$LD" cat-file -e feat:own_d.py 2>/dev/null && fail "land: конфликтная ветка влита" "$OUT"
+[ "$(git -C "$LD" rev-parse ld)" = "$BD" ] || fail "land: конфликтная ветка переписана" ""
+[ -z "$(git -C "$LD" status --porcelain)" ] || fail "land: в дереве фичи остался мусор" "$(git -C "$LD" status --porcelain)"
+[ "$(git -C "$LD" worktree list | wc -l)" = 2 ] || fail "land: временное дерево не убрано" "$(git -C "$LD" worktree list)"
+OUT=$(python3 "$SCRIPTS/task_pairs.py" land feat la --root "$LD" 2>&1) && printf '%s' "$OUT" | grep -q 'la: уже в feat' \
+  || fail "land: повторное вливание не распознано" "$OUT"
+echo dirty >> "$LD/own_a.py"
+python3 "$SCRIPTS/task_pairs.py" land feat ld --root "$LD" >/dev/null 2>&1; [ $? = 2 ] \
+  || fail "land: грязное дерево фичи не остановило" ""
+git -C "$LD" worktree remove "$LD-wtb"; rm -rf "$LD" "$LD-wtb"
+
 # --- version_check: загружена та версия, что выпущена -----------------------
 VC=$(mktemp -d); mkdir -p "$VC/home" "$VC/cache/p/1.0.0/.claude-plugin" "$VC/mp/.claude-plugin" "$VC/mp/plugins/p/.claude-plugin"
 echo '{"name":"p","version":"1.0.0"}' > "$VC/cache/p/1.0.0/.claude-plugin/plugin.json"
