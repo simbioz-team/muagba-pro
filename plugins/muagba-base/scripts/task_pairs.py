@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Можно ли вести две задачи tasks.md параллельно.
+"""Можно ли вести задачи tasks.md параллельно.
 
-    task_pairs.py <tasks.md> <T1> <T2> [--root <каталог проекта>]
-    task_pairs.py merge <ветка1> <ветка2> [--root <каталог>]
+    task_pairs.py <tasks.md> <T1> <T2> [<T3>...] [--root <каталог проекта>]
+    task_pairs.py merge <ветка1> <ветка2> [<ветка3>...] [--root <каталог>]
+
+Задач или веток больше двух — проверяется каждая пара; группа допустима,
+когда допустима каждая. Предела числа нет: сколько разрешает граф.
     task_pairs.py land <ветка фичи> <ветка>... [--root <каталог>] [--dry-run]
 
 `land` — вливание пачкой вместо ходов координатора: ветки, прошедшие
@@ -57,6 +60,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import os
 import re
 import subprocess
@@ -366,28 +370,46 @@ def main() -> int:
         return code
     if sys.argv[1:2] == ["merge"]:
         ap = argparse.ArgumentParser(prog="task_pairs.py merge")
-        ap.add_argument("a")
-        ap.add_argument("b")
+        ap.add_argument("branches", nargs="+")
         ap.add_argument("--root", default=".")
         o = ap.parse_args(sys.argv[2:])
-        code, lines = merge(Path(o.root), o.a, o.b)
-        print("\n".join(lines))
+        if len(o.branches) < 2:
+            print("task_pairs merge: нужно хотя бы две ветки")
+            return 2
+        code, out = 0, []
+        for a, b in itertools.combinations(o.branches, 2):
+            c, lines = merge(Path(o.root), a, b)
+            out += lines
+            code = max(code, c)
+        print("\n".join(out))
         return code
     ap = argparse.ArgumentParser()
     ap.add_argument("tasks")
-    ap.add_argument("a")
-    ap.add_argument("b")
+    ap.add_argument("ids", nargs="+")
     ap.add_argument("--root")
     o = ap.parse_args()
+    if len(o.ids) < 2:
+        print("task_pairs: нужно хотя бы две задачи")
+        return 2
     try:
         text = Path(o.tasks).read_text(encoding="utf-8")
     except OSError as e:
         print(f"task_pairs: {e}")
         return 2
     root = Path(o.root) if o.root else Path.cwd()
-    code, lines = check(text, o.a.upper(), o.b.upper(), root)
-    for line in lines:
-        print(("" if code == 0 else "не пара: ") + line if code != 2 else f"task_pairs: {line}")
+    ids = [i.upper() for i in o.ids]
+    many = len(ids) > 2
+    code = 0
+    for a, b in itertools.combinations(ids, 2):
+        c, lines = check(text, a, b, root)
+        if c == 2:
+            for line in lines:
+                print(f"task_pairs: {line}")
+            return 2
+        tag = f"{a} ∥ {b}: " if many else ""
+        for line in lines:
+            print(tag + ("" if c == 0 else "не пара: ") + line)
+        code = max(code, c)
     return code
 
 
