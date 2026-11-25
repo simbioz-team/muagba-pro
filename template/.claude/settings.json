@@ -1,4 +1,6 @@
 {
+  "model": "sonnet",
+  "effortLevel": "medium",
   "autoCompactWindow": 300000,
   "permissions": {
     "allow": [
