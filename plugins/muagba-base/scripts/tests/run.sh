@@ -2436,6 +2436,29 @@ rm -rf "$ES"
 BR=$(wc -l < "$(dirname "$SCRIPTS")/sync/blocks/base-rules.md")
 [ "$BR" -le 230 ] || fail "base-rules.md вырос до $BR строк (порог 230)" "ужать блок, подробности — в документ базы"
 
+# --- plugin_scope: в проекте только явно включённое --------------------------
+PS=$(mktemp -d); mkdir -p "$PS/home/.claude" "$PS/p/.claude"
+echo '{"enabledPlugins":{"muagba-base@muagba-pro":true,"docsys@docsys":true,"ui-ux@x":true,"fd@y":true,"off@z":false}}' > "$PS/home/.claude/settings.json"
+echo '{"enabledPlugins":{"fd@y":true}}' > "$PS/p/.claude/settings.json"
+echo '{"permissions":{"allow":["Bash(ls)"]},"disableClaudeAiConnectors":false}' > "$PS/p/.claude/settings.local.json"
+{ python3 "$SCRIPTS/plugin_scope.py" --root "$PS/p" --home "$PS/home" >/dev/null; [ $? -eq 1 ]; } \
+  || fail "plugin_scope: без --apply при лишнем должен выходить с 1" ""
+python3 "$SCRIPTS/plugin_scope.py" --root "$PS/p" --home "$PS/home" --apply >/dev/null
+python3 - "$PS/p/.claude/settings.local.json" <<'PY' || fail "plugin_scope: неверно записан settings.local.json" "$(cat "$PS/p/.claude/settings.local.json")"
+import json,sys
+s=json.load(open(sys.argv[1]))
+assert s["enabledPlugins"]=={"ui-ux@x":False}, s           # база, явно включённые проектом и выключенные не тронуты
+assert s["syncClaudeAiPlugins"] is False
+assert s["disableClaudeAiConnectors"] is False             # решение человека в личном файле не меняется
+assert s["permissions"]["allow"]==["Bash(ls)"]             # прочее сохранено
+assert "syncClaudeAiSkills" not in s
+PY
+python3 "$SCRIPTS/plugin_scope.py" --root "$PS/p" --home "$PS/home" >/dev/null \
+  || fail "plugin_scope: после --apply должно быть чисто (выход 0)" ""
+python3 "$SCRIPTS/plugin_scope.py" --root "$PS/none" --home "$PS/home" >/dev/null && [ ! -e "$PS/none" ] \
+  || fail "plugin_scope: без .claude/ — no-op" ""
+rm -rf "$PS"
+
 # --- setup_state: согласованность базы с самой собой ------------------------
 python3 "$SCRIPTS/setup_state.py" --check-spec >/dev/null 2>&1 \
   || fail "setup_state --check-spec" "реестр проб разошёлся с docs/gates.md"
