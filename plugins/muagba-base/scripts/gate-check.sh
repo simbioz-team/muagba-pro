@@ -301,6 +301,21 @@ if [ -n "$KEY" ]; then
 fi
 trap '[ -n "$CHANGED" ] && rm -f "$CHANGED"' EXIT
 
+# Подготовка дерева проекта (.claude/worktree-setup: зависимости, .env) —
+# перед прогоном, а не до кэша: зелёное из кэша её не ждёт. Дерево, которое
+# Claude Code завёл сам, хук `git worktree add` не видел, и без node_modules
+# быстрая часть краснела на tsc (наставник, 26.11). Нет скрипта — no-op.
+# Упал — проверка всё равно идёт: красное покажет причину, а сбой
+# подготовки пойдёт в сообщение рядом с ней.
+SETUP_NOTE=""
+SETUP_OUT=$(python3 "$(dirname "${BASH_SOURCE[0]}")/worktree_include.py" setup "$WORK" 2>&1)
+SETUP_CODE=$?
+if [ "$SETUP_CODE" -ne 0 ]; then
+  SETUP_NOTE=".claude/worktree-setup упал (код $SETUP_CODE), проверка шла без подготовки дерева:
+$(printf '%s\n' "$SETUP_OUT" | tail -n 15)"
+  log_event gate worktree_setup=failed code="$SETUP_CODE"
+fi
+
 # Своя отсечка по времени — python, а не coreutils timeout: его нет на
 # macOS. Проверка идёт в своей группе процессов и убивается целиком:
 # pytest и браузер e2e иначе переживают check.sh.
@@ -361,7 +376,7 @@ if is_question; then
   log_event gate decision=released_on_question code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
   exit 0
 fi
-block_message "$STATUS" "$OUTPUT"
+block_message "$STATUS" "$OUTPUT" "$SETUP_NOTE"
 stop_result block
 log_event gate decision=block code="$STATUS" failed_at="$FAILED_AT" duration_ms="$DUR"
 exit 2

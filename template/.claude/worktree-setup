@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Подготовка рабочего дерева исполнителя (база muagba-pro, с 0.23.26).
+#
+# База запускает этот скрипт в корне дерева сама:
+#   - после `git worktree add` — в только что заведённом дереве;
+#   - перед каждым прогоном .claude/check.sh гейтом хода.
+# Поэтому он обязан быть идемпотентным и быстрым, когда делать нечего:
+# второй запуск ничего не ставит заново.
+#
+# Окружение:
+#   MUAGBA_MAIN_CHECKOUT — основной checkout репозитория (откуда копировать);
+#   MUAGBA_WORKTREE      — это дерево (оно же текущий каталог).
+# Время — не дольше MUAGBA_WORKTREE_SETUP_TIMEOUT (600) с.
+#
+# Упал — гейт всё равно гоняет проверку и показывает хвост этого вывода
+# рядом с красным. Пустой скрипт (без шагов) ничего не делает.
+set -euo pipefail
+
+MAIN="${MUAGBA_MAIN_CHECKOUT:-}"
+if [ -z "$MAIN" ]; then
+  common=$(git rev-parse --path-format=absolute --git-common-dir)
+  MAIN=$(dirname "$common")
+fi
+[ "$(cd "$MAIN" && pwd -P)" = "$(pwd -P)" ] && exit 0  # основной checkout — готовить нечего
+
+# 1. Файлы окружения из основного checkout'а — только недостающие: свой
+#    файл дерева не трогается. Содержимое не печатается.
+for f in .env .env.local; do
+  if [ ! -e "$f" ] && [ -f "$MAIN/$f" ]; then
+    cp -p "$MAIN/$f" "$f"
+    echo "положен $f"
+  fi
+done
+
+# 2. Зависимости — впишите свои. Ставьте, только если их нет или lock-файл
+#    новее установленного: иначе гейт будет ставить их на каждом прогоне.
+#    Общий node_modules между деревьями не делайте: у веток бывают разные
+#    lock-файлы.
+#
+# Примеры:
+#   [ package-lock.json -ot node_modules/.package-lock.json ] || npm ci --no-audit --no-fund
+#   [ uv.lock -ot .venv/pyvenv.cfg ] || uv sync --locked
+#   go mod download

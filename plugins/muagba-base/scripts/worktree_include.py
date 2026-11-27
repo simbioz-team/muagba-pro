@@ -17,10 +17,22 @@ Claude Code копирует их только в деревья, которые
 - содержимое не печатается — только пути;
 - нет `.worktreeinclude` или дерево не связанное — ничего не делается.
 
+Подготовка дерева. Копией не поставить зависимости: `node_modules` у веток
+с разными lock-файлами общим быть не может, а без них быстрая часть
+`check.sh` краснеет на `tsc` (наставник, 26.11: «npm ci» вписывали руками в
+каждое задание). Стек знает только проект, поэтому шаг — его:
+исполняемый `.claude/worktree-setup` в самом дереве. Нет файла — no-op.
+База запускает его в корне дерева с `MUAGBA_MAIN_CHECKOUT` и
+`MUAGBA_WORKTREE`, не дольше `MUAGBA_WORKTREE_SETUP_TIMEOUT` (600) с.
+Скрипт обязан быть идемпотентным: гейт зовёт его перед каждым прогоном.
+
 Режимы:
   hook          PostToolUse(Bash): после `git worktree add` наполняет все
-                связанные деревья репозитория и сообщает агенту, что положено.
+                связанные деревья репозитория, готовит свежие (моложе
+                10 минут) и сообщает агенту, что сделано.
   fill КАТАЛОГ  наполнить одно дерево (гейт перед проверкой). Печатает пути.
+  setup КАТАЛОГ запустить `.claude/worktree-setup` дерева. Код скрипта;
+                при сбое — хвост вывода в stdout. Нет скрипта — 0.
   covers ПУТЬ   код 0, если ПУТЬ лежит в связанном дереве и база кладёт его
                 сама (guard-bash: подсказка вместо «иди к человеку»).
 """
@@ -33,6 +45,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -101,6 +114,39 @@ def fill(tree: Path, main: Path) -> list[str]:
     return placed
 
 
+SETUP = ".claude/worktree-setup"
+FRESH_S = 600
+
+
+def setup(tree: Path, main: Path) -> tuple[int, str] | None:
+    """Запустить подготовку дерева. None — скрипта нет; иначе (код, хвост)."""
+    script = tree / SETUP
+    if not (script.is_file() and os.access(script, os.X_OK)):
+        return None
+    env = dict(os.environ, MUAGBA_MAIN_CHECKOUT=str(main), MUAGBA_WORKTREE=str(tree))
+    try:
+        limit = float(os.environ.get("MUAGBA_WORKTREE_SETUP_TIMEOUT") or 600)
+    except ValueError:
+        limit = 600.0
+    try:
+        r = subprocess.run([str(script)], cwd=tree, env=env, capture_output=True,
+                           text=True, timeout=limit, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return 124, f"{SETUP}: не уложился в {int(limit)} с"
+    except OSError as e:
+        return 126, f"{SETUP}: не запустился: {e}"
+    tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-15:])
+    return r.returncode, tail
+
+
+def fresh(tree: Path) -> bool:
+    """Дерево заведено только что: файл .git моложе FRESH_S."""
+    try:
+        return time.time() - (tree / ".git").stat().st_mtime < FRESH_S
+    except OSError:
+        return False
+
+
 def linked_trees(main: Path) -> list[Path]:
     out = git(main, "worktree", "list", "--porcelain") or ""
     trees = [Path(l[len("worktree "):]) for l in out.splitlines()
@@ -124,17 +170,28 @@ def cmd_hook() -> int:
     if not common or Path(common.strip()).name != ".git":
         return 0
     main = Path(common.strip()).parent
-    if not included(main):
-        return 0
-    notes = []
+    has_include = bool(included(main))
+    notes, prepared = [], []
     for tree in linked_trees(main):
-        placed = fill(tree, main)
+        placed = fill(tree, main) if has_include else []
         if placed:
             notes.append(f"{tree}: {', '.join(placed)}")
+        if fresh(tree):
+            res = setup(tree, main)
+            if res is not None:
+                code, tail = res
+                prepared.append(f"{tree}: готово" if code == 0 else
+                                f"{tree}: код {code}\n{tail}")
+    msgs = []
     if notes:
-        msg = ("База положила в рабочее дерево файлы из .worktreeinclude "
-               "(копия основного checkout'а): " + "; ".join(notes) +
-               ". Копировать их руками не нужно.")
+        msgs.append("База положила в рабочее дерево файлы из .worktreeinclude "
+                    "(копия основного checkout'а): " + "; ".join(notes) +
+                    ". Копировать их руками не нужно.")
+    if prepared:
+        msgs.append(f"База запустила {SETUP} в новом дереве: " + "; ".join(prepared) +
+                    ". Повторять его руками не нужно, если он не упал.")
+    if msgs:
+        msg = " ".join(msgs)
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
                                                  "additionalContext": msg}},
                          ensure_ascii=False))
@@ -153,6 +210,19 @@ def cmd_fill(path: str) -> int:
         for rel in fill(*r):
             print(rel)
     return 0
+
+
+def cmd_setup(path: str) -> int:
+    r = roots(existing(Path(path)))
+    if not r:
+        return 0
+    res = setup(*r)
+    if res is None:
+        return 0
+    code, tail = res
+    if code:
+        print(tail)
+    return code
 
 
 def cmd_covers(path: str) -> int:
@@ -178,6 +248,8 @@ def main() -> int:
             return 0
     if len(a) == 2 and a[0] == "fill":
         return cmd_fill(a[1])
+    if len(a) == 2 and a[0] == "setup":
+        return cmd_setup(a[1])
     if len(a) == 2 and a[0] == "covers":
         return cmd_covers(a[1])
     print(__doc__, file=sys.stderr)

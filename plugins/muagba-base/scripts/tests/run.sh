@@ -2328,6 +2328,73 @@ rm "$WI/.worktreeinclude"; rm "$WI/.claude/worktrees/t1/.env"
   || fail "worktree_include: без .worktreeinclude не no-op" ""
 rm -rf "$WI"
 
+# --- worktree-setup: подготовка дерева скриптом проекта ------------------------
+# У наставника (26.11) в свежих деревьях не было node_modules, быстрая часть
+# краснела на tsc, и npm ci вписывали в каждое задание. Скрипт проекта
+# запускает база: после git worktree add и гейтом перед проверкой.
+WS=$(mktemp -d); git -C "$WS" init -q
+mkdir -p "$WS/.claude/logs"
+printf '.env\ndeps/\n.claude/worktrees/\n.claude/logs/\n' > "$WS/.gitignore"
+cp "$SCRIPTS/../../../template/.claude/worktree-setup" "$WS/.claude/worktree-setup"
+cat >> "$WS/.claude/worktree-setup" <<'SH'
+[ -d deps ] || { mkdir deps; echo x >> "$MUAGBA_WORKTREE/deps/installs"; echo "поставлено"; }
+SH
+chmod +x "$WS/.claude/worktree-setup"
+cat > "$WS/.claude/check.sh" <<'SH'
+#!/usr/bin/env bash
+[ -d deps ] || { echo "нет зависимостей"; exit 1; }
+[ -f .env ] || { echo "нет .env"; exit 1; }
+SH
+chmod +x "$WS/.claude/check.sh"
+git -C "$WS" add -A; git -C "$WS" -c user.name=t -c user.email=t@t commit -qm init
+printf 'SECRET=1\n' > "$WS/.env"
+sadd() { git -C "$WS" worktree add -q "$WS/.claude/worktrees/$1" -b "$1" 2>/dev/null; }
+shook() {
+  printf '{"tool_name":"Bash","tool_input":{"command":"git worktree add x"},"cwd":"%s"}' "$WS" \
+    | python3 "$SCRIPTS/worktree_include.py" hook
+}
+sgate() {  # <дерево> → код гейта; вывод в $SGOUT
+  SGOUT=$(printf '{"hook_event_name":"Stop","last_assistant_message":"Готово.","cwd":"%s","session_id":"s"}' \
+    "$WS/.claude/worktrees/$1" | MUAGBA_GATE_ALWAYS=1 CLAUDE_PROJECT_DIR="$WS" bash "$SCRIPTS/gate-check.sh" 2>&1)
+}
+# Старое дерево хук не трогает: оно заведено не сейчас.
+sadd old; touch -d '-20 minutes' "$WS/.claude/worktrees/old/.git"
+sadd s1
+OUT=$(shook)
+[ -d "$WS/.claude/worktrees/s1/deps" ] && cmp -s "$WS/.env" "$WS/.claude/worktrees/s1/.env" \
+  || fail "worktree-setup: хук после git worktree add не подготовил дерево" "$OUT"
+printf '%s' "$OUT" | grep -q 'worktree-setup' \
+  || fail "worktree-setup: агенту не сказано, что дерево подготовлено" "$OUT"
+printf '%s' "$OUT" | grep -q 'SECRET' && fail "worktree-setup: содержимое .env напечатано" "$OUT"
+[ ! -e "$WS/.claude/worktrees/old/deps" ] \
+  || fail "worktree-setup: хук готовил старое дерево" "$OUT"
+# Дерево, которое хук не видел, готовит гейт — и проверка зелёная.
+sadd s2
+sgate s2 || fail "worktree-setup: гейт не подготовил дерево и покраснел" "$SGOUT"
+# Идемпотентность: повторные прогоны не ставят заново.
+sgate s2; sgate s1
+[ "$(wc -l < "$WS/.claude/worktrees/s2/deps/installs")" -eq 1 ] \
+  && [ "$(wc -l < "$WS/.claude/worktrees/s1/deps/installs")" -eq 1 ] \
+  || fail "worktree-setup: заготовка не идемпотентна — ставит заново" ""
+# Свой .env дерева не затирается.
+printf 'MINE=1\n' > "$WS/.claude/worktrees/s1/.env"; sgate s1
+grep -q 'MINE=1' "$WS/.claude/worktrees/s1/.env" \
+  || fail "worktree-setup: свой .env дерева затёрт" ""
+# Упал — проверка идёт, сбой подготовки рядом с красным.
+sadd s3
+printf '#!/usr/bin/env bash\necho boom-setup; exit 3\n' > "$WS/.claude/worktrees/s3/.claude/worktree-setup"
+sgate s3; SCODE=$?
+[ "$SCODE" -eq 2 ] && printf '%s' "$SGOUT" | grep -q 'worktree-setup упал (код 3)' \
+  && printf '%s' "$SGOUT" | grep -q 'boom-setup' && printf '%s' "$SGOUT" | grep -q 'нет зависимостей' \
+  || fail "worktree-setup: сбой подготовки не показан рядом с красным" "$SGOUT"
+# Нет скрипта — no-op.
+rm "$WS/.claude/worktrees/old/.claude/worktree-setup"
+[ -z "$(python3 "$SCRIPTS/worktree_include.py" setup "$WS/.claude/worktrees/old")" ] \
+  || fail "worktree-setup: без скрипта не no-op" ""
+python3 "$SCRIPTS/worktree_include.py" setup "$WS/.claude/worktrees/old" \
+  || fail "worktree-setup: без скрипта код не 0" ""
+rm -rf "$WS"
+
 # --- роли: модель и effort задаёт роль (ADR-0020) ----------------------------
 # Без model роль наследует модель сессии — у владельца это Opus на xhigh, и
 # весь выбор по шагу молча пропадает: так было с 99% запусков до 0.23.0.

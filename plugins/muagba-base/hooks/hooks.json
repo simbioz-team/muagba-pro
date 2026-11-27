@@ -67,7 +67,7 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/worktree_include.py\" hook",
-            "timeout": 30
+            "timeout": 660
           }
         ]
       }
