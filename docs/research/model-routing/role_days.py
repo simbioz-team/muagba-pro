@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Расход по ролям субагентов: всего и медиана на задачу, вчера против сегодня.
+"""Расход по ролям субагентов: всего и медиана на задачу — за всё время, вчера, сегодня.
 
   role_days.py [--since 2026-11-20T10:00Z] [--today ГГГГ-ММ-ДД]
 
 Столбцы:
 - «всего» — весь расход роли с --since (как в watch.py);
-- «вчера» и «сегодня» — медиана расхода роли на одну задачу за сутки:
-  запуски роли за сутки складываются по задаче, медиана берётся по задачам;
-- «Δ» — изменение медианы сегодня к вчера, в процентах.
+- «всё время» — медиана расхода роли на одну задачу с --since: все запуски
+  роли по задаче складываются, медиана берётся по задачам;
+- «вчера» и «сегодня» — то же, но запуски только этих суток;
+- «Δ вчера», «Δ всё» — изменение медианы сегодня к вчера и к всему времени,
+  в процентах.
 
 Задача — номер в описании запуска (T1234, T-2240, С9-T4, Е9-2, ЕК-3, Н-2)
 и проект.
@@ -59,8 +61,8 @@ def main() -> int:
     yesterday = today - timedelta(days=1)
 
     total = defaultdict(float)                       # роль → $
-    per_day = defaultdict(lambda: defaultdict(float))  # (роль, сутки) → задача → $
-    untagged = defaultdict(lambda: [0, 0])           # роль → [без номера, всего] за двое суток
+    per_day = defaultdict(lambda: defaultdict(float))  # (роль, сутки|"all") → задача → $
+    untagged = defaultdict(lambda: [0, 0])           # роль → [без номера, всего] с --since
 
     for d in glob.glob(watch.ROOT + "/-home-rustam-develop-simbioz-team-*"):
         pr = watch.project(d)
@@ -81,33 +83,37 @@ def main() -> int:
             c = sum(watch.cost(mo, u)[0] for _, mo, u in rq)
             total[role] += c
             day = start.astimezone().date()
-            if day not in (today, yesterday):
-                continue
             t = task_of(meta.get("description", ""))
             untagged[role][1] += 1
             if t is None:
                 untagged[role][0] += 1
                 continue
-            per_day[(role, day)][(pr, t)] += c
+            per_day[(role, "all")][(pr, t)] += c
+            if day in (today, yesterday):
+                per_day[(role, day)][(pr, t)] += c
 
-    def med(role: str, day: date) -> tuple[float | None, int]:
+    def pct(new: float | None, old: float | None) -> str:
+        return f"{(new - old) / old * 100:+.0f}%" if old and new is not None else "—"
+
+    def med(role: str, day) -> tuple[float | None, int]:
         v = list(per_day[(role, day)].values())
         return (statistics.median(v) if v else None), len(v)
 
-    print(f"Роли с {a.since}; медиана на задачу: вчера {yesterday:%d.%m}, сегодня {today:%d.%m} "
-          f"(локальное время)\n")
-    head = f"{'Роль':<18} {'всего':>10} {'вчера':>9} {'задач':>5} {'сегодня':>9} {'задач':>5} {'Δ':>7}"
+    print(f"Роли с {a.since}; медиана $ на задачу: всё время, вчера {yesterday:%d.%m}, "
+          f"сегодня {today:%d.%m} (локальное время)\n")
+    head = (f"{'Роль':<18} {'всего':>10} {'всё время':>9} {'задач':>5} {'вчера':>8} {'задач':>5} "
+            f"{'сегодня':>8} {'задач':>5} {'Δ вчера':>8} {'Δ всё':>7}")
     print(head)
     print("-" * len(head))
     for role in sorted(total, key=total.get, reverse=True):
+        al, na = med(role, "all")
         y, ny = med(role, yesterday)
         t, nt = med(role, today)
-        delta = f"{(t - y) / y * 100:+.0f}%" if y and t is not None else "—"
-        print(f"{role:<18} {fmt_money(total[role]):>10} {fmt_money(y):>9} {ny:>5} "
-              f"{fmt_money(t):>9} {nt:>5} {delta:>7}")
+        print(f"{role:<18} {fmt_money(total[role]):>10} {fmt_money(al):>9} {na:>5} {fmt_money(y):>8} "
+              f"{ny:>5} {fmt_money(t):>8} {nt:>5} {pct(t, y):>8} {pct(t, al):>7}")
     miss = {r: v for r, v in untagged.items() if v[0]}
     if miss:
-        print("\nБез номера задачи (в медиану не вошли), за двое суток: "
+        print("\nБез номера задачи (в медианы не вошли), с --since: "
               + ", ".join(f"{r} {v[0]} из {v[1]}" for r, v in sorted(miss.items())))
     return 0
 
