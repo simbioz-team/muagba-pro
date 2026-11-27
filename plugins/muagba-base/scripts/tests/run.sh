@@ -712,6 +712,9 @@ gate Stop '' 'Сделал схему. Какой тип взять для id �
 # implementer-deep — тот же исполнитель на другой модели (ADR-0020).
 [ "$(gate SubagentStop muagba-base:implementer-deep 'Готово.' | cut -d'|' -f1)" = "2" ] \
   || fail "gate-check: implementer-deep ушёл с красной проверкой" ""
+# implementer-light — тот же исполнитель на Haiku: сдаёт код, держится гейтом.
+[ "$(gate SubagentStop muagba-base:implementer-light 'Готово.' | cut -d'|' -f1)" = "2" ] \
+  || fail "gate-check: implementer-light ушёл с красной проверкой" ""
 [ "$(gate SubagentStop muagba-base:reviewer 'Нельзя сливать.' | cut -d'|' -f1)" = "0" ] \
   || fail "gate-check: проверяющего держит гейт кода" ""
 # Служебные вызовы Claude Code приходят с пустым agent_type — у narta это 151
